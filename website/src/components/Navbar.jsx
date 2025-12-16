@@ -27,9 +27,9 @@ function Navbar() {
       <div className="container navbar-container">
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
-            {/* Use Vite's base URL so this works both locally and on GitHub Pages */}
+            {/* Use a relative path so it works both locally and on GitHub Pages */}
             <img 
-              src={`${import.meta.env.BASE_URL}WinLink_logo.png`}
+              src="WinLink_logo.png"
               alt="WinLink Logo" 
               className="logo-image"
             />
