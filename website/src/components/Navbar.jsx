@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { FiMenu, FiX } from 'react-icons/fi'
 import './Navbar.css'
 
-const logoImage = new URL('../assets/WinLink_logo.png', import.meta.url).href
-
 function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -30,11 +28,11 @@ function Navbar() {
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
             <img 
-              src={logoImage} 
+              src={import.meta.env.BASE_URL + 'WinLink_logo.png'}
               alt="WinLink Logo" 
               className="logo-image"
               onError={(e) => {
-                console.error('Logo failed to load:', logoImage);
+                console.error('Logo failed to load');
                 e.target.style.display = 'none';
               }}
               onLoad={() => console.log('Logo loaded successfully')}
