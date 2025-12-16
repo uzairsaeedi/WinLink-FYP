@@ -28,7 +28,7 @@ function Navbar() {
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
             <img 
-              src="WinLink_logo.png"
+              src="/WinLink_logo.png"
               alt="WinLink Logo" 
               className="logo-image"
             />
