@@ -28,7 +28,16 @@ function Navbar() {
       <div className="container navbar-container">
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
-            <img src={logoImage} alt="WinLink Logo" className="logo-image" />
+            <img 
+              src={logoImage} 
+              alt="WinLink Logo" 
+              className="logo-image"
+              onError={(e) => {
+                console.error('Logo failed to load:', logoImage);
+                e.target.style.display = 'none';
+              }}
+              onLoad={() => console.log('Logo loaded successfully')}
+            />
           </div>
           <span className="logo-text">WinLink</span>
         </div>
