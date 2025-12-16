@@ -28,14 +28,14 @@ function Navbar() {
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
             <img 
-              src={import.meta.env.BASE_URL + 'WinLink_logo.png'}
+              src="WinLink_logo.png"
               alt="WinLink Logo" 
               className="logo-image"
               onError={(e) => {
-                console.error('Logo failed to load');
+                console.error('Logo failed to load from:', e.target.src);
                 e.target.style.display = 'none';
               }}
-              onLoad={() => console.log('Logo loaded successfully')}
+              onLoad={() => console.log('Logo loaded successfully from:', document.querySelector('.logo-image')?.src)}
             />
           </div>
           <span className="logo-text">WinLink</span>
