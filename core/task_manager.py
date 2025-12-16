@@ -10,20 +10,17 @@ from dataclasses import dataclass, asdict
 from typing import Dict, List, Any, Optional
 
 class TaskType(Enum):
-    CUSTOM = "custom"
-    COMPUTATION = "computation"
-    FILE_PROCESSING = "file_processing"
-    IMAGE_PROCESSING = "image_processing"
-    DATA_ANALYSIS = "data_analysis"
-    VIDEO_PLAYBACK = "video_playback"  # Video streaming task type
-    SYSTEM_MONITORING = "system_monitoring"  # Monitor system health and services
-    NETWORK_DIAGNOSTICS = "network_diagnostics"  # Network testing and diagnostics
-    TEXT_PROCESSING = "text_processing"  # Advanced text operations
-    ENCRYPTION = "encryption"  # Data encryption/decryption
-    MACHINE_LEARNING = "machine_learning"  # ML model training/inference
-    DATABASE_QUERY = "database_query"  # Database operations
-    API_REQUEST = "api_request"  # External API calls
-    BENCHMARK = "benchmark"  # Performance benchmarking
+    CUSTOM_TASK = "Custom Task"
+    COMPUTATION = "Computation"
+    FILE_PROCESSING = "File Processing"
+    IMAGE_PROCESSING = "Image Processing"
+    DATA_ANALYSIS = "Data Analysis"
+    VIDEO_PLAYBACK = "Video Playback"
+    SYSTEM_CHECK = "System Check"
+    NETWORK_TEST = "Network Test"
+    TEXT_ANALYSIS = "Text Analysis"
+    MACHINE_LEARNING = "Machine Learning"
+    API_REQUEST = "API Request"
 
 
 class TaskStatus(Enum):
