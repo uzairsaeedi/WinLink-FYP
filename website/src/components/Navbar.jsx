@@ -21,7 +21,7 @@ function Navbar() {
       setIsMobileMenuOpen(false)
     }
   }
-// sadad
+
   return (
     <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
       <div className="container navbar-container">
