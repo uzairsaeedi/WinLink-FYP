@@ -1,5 +1,6 @@
 import React from 'react'
 import { FiGithub, FiMail, FiHeart } from 'react-icons/fi'
+import logoImage from '../assets/WinLink_logo.png'
 import './Footer.css'
 
 function Footer() {
@@ -12,7 +13,7 @@ function Footer() {
           <div className="footer-section">
             <div className="footer-logo">
               <div className="logo-icon-footer">
-                <img src="/WinLink_logo.png" alt="WinLink Logo" className="footer-logo-image" />
+                <img src={logoImage} alt="WinLink Logo" className="footer-logo-image" />
               </div>
               <span className="logo-text">WinLink</span>
             </div>
