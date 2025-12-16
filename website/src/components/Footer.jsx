@@ -12,7 +12,7 @@ function Footer() {
           <div className="footer-section">
             <div className="footer-logo">
               <div className="logo-icon-footer">
-                <img src="/WinLink_logo.png" alt="WinLink Logo" className="footer-logo-image" />
+                <img src={`${import.meta.env.BASE_URL}WinLink_logo.png`} alt="WinLink Logo" className="footer-logo-image" />
               </div>
               <span className="logo-text">WinLink</span>
             </div>
