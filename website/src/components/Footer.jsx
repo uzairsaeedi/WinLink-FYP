@@ -13,7 +13,7 @@ function Footer() {
             <div className="footer-logo">
               <div className="logo-icon-footer">
                 {/* Use a relative path so it works both locally and on GitHub Pages */}
-                <img src="WinLink_logo.png" alt="WinLink Logo" className="footer-logo-image" />
+                <img src={`${import.meta.env.BASE_URL}WinLink_logo.png`} alt="WinLink Logo" className="footer-logo-image" />
               </div>
               <span className="logo-text">WinLink</span>
             </div>
@@ -56,17 +56,17 @@ function Footer() {
           <div className="footer-section">
             <h4>Connect</h4>
             <div className="social-links">
-              <a 
-                href="https://github.com/ashhadhere/WinLink-FYP" 
-                target="_blank" 
+              <a
+                href="https://github.com/ashhadhere/WinLink-FYP"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="social-link"
                 title="GitHub"
               >
                 <FiGithub />
               </a>
-              <a 
-                href="mailto:contact@winlink.dev" 
+              <a
+                href="mailto:contact@winlink.dev"
                 className="social-link"
                 title="Email"
               >

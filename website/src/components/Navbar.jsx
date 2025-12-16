@@ -28,9 +28,9 @@ function Navbar() {
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
             {/* Use a relative path so it works both locally and on GitHub Pages */}
-            <img 
-              src="WinLink_logo.png"
-              alt="WinLink Logo" 
+            <img
+              src={`${import.meta.env.BASE_URL}WinLink_logo.png`}
+              alt="WinLink Logo"
               className="logo-image"
             />
           </div>
@@ -48,8 +48,8 @@ function Navbar() {
           <button className="btn btn-primary" onClick={() => scrollToSection('download')}>
             Get Started
           </button>
-          <button 
-            className="mobile-menu-toggle" 
+          <button
+            className="mobile-menu-toggle"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             {isMobileMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
