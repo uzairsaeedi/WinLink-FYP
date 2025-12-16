@@ -27,8 +27,9 @@ function Navbar() {
       <div className="container navbar-container">
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
+            {/* Logo is served from the Vite public directory */}
             <img 
-              src={`${import.meta.env.BASE_URL}WinLink_logo.png`}
+              src="/WinLink_logo.png"
               alt="WinLink Logo" 
               className="logo-image"
             />
