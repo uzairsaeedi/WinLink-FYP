@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { FiMenu, FiX } from 'react-icons/fi'
 import './Navbar.css'
-import logo from '../assets/WinLink_logo.png'
 
 function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
@@ -29,7 +28,7 @@ function Navbar() {
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
             <img 
-              src={logo}
+              src="WinLink_logo.png"
               alt="WinLink Logo" 
               className="logo-image"
             />
