@@ -1,7 +1,8 @@
 import React from 'react'
 import { FiGithub, FiMail, FiHeart } from 'react-icons/fi'
-import logoImage from '../assets/WinLink_logo.png'
 import './Footer.css'
+
+const logoImage = new URL('../assets/WinLink_logo.png', import.meta.url).href
 
 function Footer() {
   const currentYear = new Date().getFullYear()

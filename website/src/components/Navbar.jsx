@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { FiMenu, FiX } from 'react-icons/fi'
-import logoImage from '../assets/WinLink_logo.png'
 import './Navbar.css'
+
+const logoImage = new URL('../assets/WinLink_logo.png', import.meta.url).href
 
 function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
