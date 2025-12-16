@@ -104,38 +104,57 @@ class InitializationThread(QThread):
 class ModernSplashScreen(QSplashScreen):
     """Modern splash screen with loading animation"""
     
-    def __init__(self):
-        # Create pixmap
-        pixmap = QPixmap(500, 300)
+    def __init__(self, enable_security_checks=False):
+        # Create responsive pixmap (will scale based on screen size)
+        from PyQt5.QtWidgets import QDesktopWidget
+        desktop = QDesktopWidget()
+        screen_rect = desktop.availableGeometry()
+        
+        # Use 30% of screen width or max 600px
+        splash_width = min(int(screen_rect.width() * 0.3), 600)
+        splash_height = int(splash_width * 0.6)  # Maintain aspect ratio
+        
+        pixmap = QPixmap(splash_width, splash_height)
         pixmap.fill(QColor(26, 26, 58))
         
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         from PyQt5.QtGui import QLinearGradient
-        grad = QLinearGradient(0, 0, 500, 300)
+        grad = QLinearGradient(0, 0, splash_width, splash_height)
         grad.setColorAt(0, QColor(52, 73, 94))
         grad.setColorAt(0.5, QColor(44, 62, 80))
         grad.setColorAt(1, QColor(34, 49, 63))
         painter.fillRect(pixmap.rect(), grad)
         painter.setPen(QColor(255,255,255))
-        painter.setFont(QFont("Arial", 32, QFont.Bold))
+        
+        # Scale font size based on splash size
+        font_size = max(24, int(splash_width * 0.064))
+        painter.setFont(QFont("Arial", font_size, QFont.Bold))
         painter.drawText(pixmap.rect(), Qt.AlignCenter, "WinLink")
         painter.end()
         
         super().__init__(pixmap)
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         
+        self.splash_width = splash_width
+        self.splash_height = splash_height
+        
         # Progress UI
         self._setup_progress_bar()
         
         # Thread
-        self.init_thread = InitializationThread()
+        self.init_thread = InitializationThread(enable_security_checks)
         self.init_thread.progress_updated.connect(self._update_progress)
         self.init_thread.finished.connect(self._launch_main_app)
 
     def _setup_progress_bar(self):
         pw = QWidget(self)
-        pw.setGeometry(50, 220, 400, 60)
+        # Position progress bar relative to splash size
+        margin = int(self.splash_width * 0.1)
+        bar_height = int(self.splash_height * 0.2)
+        y_pos = self.splash_height - bar_height - margin
+        
+        pw.setGeometry(margin, y_pos, self.splash_width - 2*margin, bar_height)
         l = QVBoxLayout(pw)
         l.setSpacing(10)
         self.progress_label = QLabel("Initializing WinLink...")
@@ -170,35 +189,6 @@ class ModernSplashScreen(QSplashScreen):
     def _update_progress(self, val, msg):
         self.progress_bar.setValue(val)
         self.progress_label.setText(msg)
-
-    def __init__(self, enable_security_checks=False):
-        # Create pixmap
-        pixmap = QPixmap(500, 300)
-        pixmap.fill(QColor(26, 26, 58))
-        
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        from PyQt5.QtGui import QLinearGradient
-        grad = QLinearGradient(0, 0, 500, 300)
-        grad.setColorAt(0, QColor(52, 73, 94))
-        grad.setColorAt(0.5, QColor(44, 62, 80))
-        grad.setColorAt(1, QColor(34, 49, 63))
-        painter.fillRect(pixmap.rect(), grad)
-        painter.setPen(QColor(255,255,255))
-        painter.setFont(QFont("Arial", 32, QFont.Bold))
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "WinLink")
-        painter.end()
-        
-        super().__init__(pixmap)
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        
-        # Progress UI
-        self._setup_progress_bar()
-        
-        # Thread
-        self.init_thread = InitializationThread(enable_security_checks)
-        self.init_thread.progress_updated.connect(self._update_progress)
-        self.init_thread.finished.connect(self._launch_main_app)
 
     def _launch_main_app(self):
         QTimer.singleShot(500, self._finish_and_launch)

@@ -1,14 +1,21 @@
 
 
 import sys, os, socket, threading, psutil, time, json
+from collections import deque
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QProgressBar, QTextEdit, QGroupBox, QCheckBox, QSpinBox,
     QFormLayout, QLineEdit, QGraphicsDropShadowEffect, QMessageBox,
-    QFileDialog, QSizePolicy, QSplitter
+    QFileDialog, QSizePolicy, QSplitter, QGridLayout, QScrollArea, QDesktopWidget, QTabWidget
 )
-from PyQt5.QtGui import QColor, QIntValidator, QTextCursor, QIcon
+from PyQt5.QtGui import QColor, QIntValidator, QTextCursor, QIcon, QPainter, QPen, QBrush, QFont
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
+from PyQt5 import QtWidgets, QtCore
+import matplotlib
+matplotlib.use('Qt5Agg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 
 ROOT = os.path.abspath(os.path.join(__file__, "..", ".."))
 if ROOT not in sys.path:
@@ -17,6 +24,15 @@ if ROOT not in sys.path:
 from core.task_executor import TaskExecutor
 from core.network import WorkerNetwork, MessageType, NetworkMessage
 from assets.styles import STYLE_SHEET
+from worker.task_thread import TaskExecutionThread
+
+# Import VideoPlayerWindow only when needed (VLC is optional)
+try:
+    from worker.video_player import VideoPlayerWindow
+    VIDEO_PLAYER_AVAILABLE = True
+except Exception as e:
+    VIDEO_PLAYER_AVAILABLE = False
+    print(f"[WORKER] Video player not available: {e}")
 
 class LogSignals(QObject):
     """Signals for thread-safe logging"""
@@ -43,6 +59,17 @@ class WorkerUI(QWidget):
         self.last_output_text = "No task output yet."
         self.task_log_initialized = False  # Track if we've written first real log
         self.startup_logs_shown = False  # Track if startup logs have been shown
+        
+        # Track active task threads to prevent UI blocking
+        self.active_task_threads = {}  # task_id -> TaskExecutionThread
+        
+        # Visualization data structures
+        self.cpu_history = deque(maxlen=60)  # Last 60 seconds of CPU
+        self.mem_history = deque(maxlen=60)  # Last 60 seconds of Memory
+        self.disk_history = deque(maxlen=60)  # Last 60 seconds of Disk
+        self.network_history = deque(maxlen=60)  # Last 60 seconds of Network
+        self.task_count_history = deque(maxlen=60)  # Task count over time
+        self.task_performance = []  # List of task completion times
 
         self.log_signals = LogSignals()
         self.log_signals.log_message.connect(self._append_log_to_ui)
@@ -55,6 +82,11 @@ class WorkerUI(QWidget):
         self.setup_ui()
         self.update_ip()
         self.start_monitoring_thread()
+        
+        # Start visualization update timer
+        self.viz_timer = QTimer()
+        self.viz_timer.timeout.connect(self.update_visualization_data)
+        self.viz_timer.start(1000)  # Update every second
 
         QTimer.singleShot(100, self.update_resources_now)
 
@@ -80,32 +112,373 @@ class WorkerUI(QWidget):
         })
         self.network.send_message_to_master(msg)
 
+    def position_spinbox_arrows(self):
+        """Position arrow labels on top of spinbox buttons"""
+        # Position CPU spinbox arrows
+        width = self.cpu_limit.width()
+        height = self.cpu_limit.height()
+        button_width = 20
+        x_pos = width - button_width
+        
+        self.cpu_up_arrow.setGeometry(x_pos, 0, button_width, height // 2)
+        self.cpu_down_arrow.setGeometry(x_pos, height // 2, button_width, height // 2)
+        
+        # Position Memory spinbox arrows
+        width = self.mem_limit.width()
+        height = self.mem_limit.height()
+        x_pos = width - button_width
+        
+        self.mem_up_arrow.setGeometry(x_pos, 0, button_width, height // 2)
+        self.mem_down_arrow.setGeometry(x_pos, height // 2, button_width, height // 2)
+
+    def showEvent(self, event):
+        """Called when window is shown"""
+        super().showEvent(event)
+        # Position arrows after window is shown
+        QTimer.singleShot(50, self.position_spinbox_arrows)
+
     def setup_ui(self):
-        self.setStyleSheet(STYLE_SHEET)
+        # Modern global styling matching master UI
+        self.setStyleSheet("""
+            /* Modern Scrollbars */
+            QScrollBar:vertical {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(20, 25, 35, 0.8),
+                    stop:1 rgba(30, 35, 45, 0.8));
+                width: 14px;
+                border-radius: 7px;
+                margin: 2px;
+            }
+            QScrollBar::handle:vertical {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(0, 245, 160, 0.6),
+                    stop:1 rgba(102, 126, 234, 0.6));
+                border-radius: 7px;
+                min-height: 30px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            QScrollBar::handle:vertical:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(0, 245, 160, 0.8),
+                    stop:1 rgba(102, 126, 234, 0.8));
+            }
+            
+            /* Modern GroupBox */
+            QGroupBox {
+                font-size: 11pt;
+                font-weight: bold;
+                color: white;
+                background: rgba(102, 126, 234, 0.1);
+                border: 2px solid rgba(102, 126, 234, 0.3);
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 8px;
+                background: rgba(102, 126, 234, 0.2);
+                border-radius: 4px;
+            }
+        """)
+        
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Main content area
         content_widget = QWidget()
         content_widget.setObjectName("contentArea")
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(12, 12, 12, 12)
-        content_layout.setSpacing(6)
+        content_layout.setContentsMargins(20, 20, 20, 20)
+        content_layout.setSpacing(15)
 
-        title = QLabel("WinLink – Worker PC")
-        title.setObjectName("headerLabel")
-        title.setAlignment(Qt.AlignCenter)
-        content_layout.addWidget(title)
+        # Modern header
+        header = self._create_header()
+        content_layout.addWidget(header)
 
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(8)
-        splitter.addWidget(self.create_connection_panel())
-        splitter.addWidget(self.create_task_panel())
-        splitter.setSizes([400, 600])
-        content_layout.addWidget(splitter, 1)
+        # Create tab widget matching master UI
+        tab_widget = QtWidgets.QTabWidget()
+        tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 2px solid rgba(102, 126, 234, 0.4);
+                border-radius: 8px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(25, 30, 42, 0.6),
+                    stop:1 rgba(20, 25, 37, 0.6));
+                padding: 15px;
+                margin-top: 2px;
+            }
+            QTabBar::tab {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(40, 45, 60, 0.8),
+                    stop:1 rgba(30, 35, 50, 0.8));
+                color: rgba(255, 255, 255, 0.7);
+                padding: 12px 32px;
+                margin-right: 4px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                border: 2px solid rgba(102, 126, 234, 0.2);
+                border-bottom: none;
+                font-size: 10.5pt;
+                font-weight: 600;
+                min-width: 200px;
+            }
+            QTabBar::tab:selected {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(102, 126, 234, 0.7),
+                    stop:1 rgba(88, 153, 234, 0.7));
+                color: white;
+                border: 2px solid rgba(102, 126, 234, 0.6);
+                border-bottom: 3px solid #667eea;
+                padding-bottom: 14px;
+                margin-top: 0px;
+            }
+            QTabBar::tab:hover:!selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(60, 70, 90, 0.9),
+                    stop:1 rgba(50, 60, 80, 0.9));
+                color: rgba(255, 255, 255, 0.9);
+                border: 2px solid rgba(102, 126, 234, 0.4);
+            }
+        """)
+
+        # Tab 1: Worker Configuration & Tasks
+        main_tab = QWidget()
+        main_tab_layout = QHBoxLayout(main_tab)
+        main_tab_layout.setSpacing(15)
+        main_tab_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Left: Connection panel
+        connection_panel = self.create_connection_panel()
+        main_tab_layout.addWidget(connection_panel, 1)
+        
+        # Right: Task panel (without visualizations)
+        task_panel = self.create_task_panel()
+        main_tab_layout.addWidget(task_panel, 2)
+
+        # Tab 2: Analytics & Visualizations
+        analytics_tab = self.create_analytics_tab()
+
+        # Add tabs
+        tab_widget.addTab(main_tab, "⚡ Worker & Tasks")
+        tab_widget.addTab(analytics_tab, "📊 Analytics")
+
+        content_layout.addWidget(tab_widget, 1)
 
         main_layout.addWidget(content_widget, 1)
+        
+        # Set responsive window size
+        self.setMinimumSize(1024, 700)
+        self.resize(1400, 900)
+        
+        # Center window on screen
+        from PyQt5.QtWidgets import QDesktopWidget
+        screen_geometry = QDesktopWidget().availableGeometry()
+        x = (screen_geometry.width() - self.width()) // 2
+        y = (screen_geometry.height() - self.height()) // 2
+        self.move(x, y)
+    
+    def _create_header(self):
+        """Create modern header matching master UI"""
+        header = QFrame()
+        header.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(102, 126, 234, 0.4),
+                    stop:0.5 rgba(75, 180, 200, 0.35),
+                    stop:1 rgba(0, 245, 160, 0.4));
+                border: 2px solid rgba(0, 245, 160, 0.3);
+                border-radius: 12px;
+            }
+        """)
+        header.setMinimumHeight(65)
+        header.setMaximumHeight(80)
+        header.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(15)
+        layout.setAlignment(Qt.AlignVCenter)
+        
+        # Left - Title
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
+        
+        title = QLabel("⚡ WinLink Worker")
+        title.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 15pt;
+                font-weight: bold;
+                background: transparent;
+                border: none;
+            }
+        """)
+        
+        subtitle = QLabel("Distributed Task Execution Node")
+        subtitle.setStyleSheet("""
+            QLabel {
+                color: rgba(255, 255, 255, 0.8);
+                font-size: 9pt;
+                background: transparent;
+                font-weight: 500;
+                border: none;
+            }
+        """)
+        
+        title_layout.addWidget(title)
+        title_layout.addWidget(subtitle)
+        layout.addLayout(title_layout)
+        
+        layout.addStretch()
+        
+        # Right - Status
+        self.status_indicator = QLabel("● Ready")
+        self.status_indicator.setAlignment(Qt.AlignCenter)
+        self.status_indicator.setStyleSheet("""
+            QLabel {
+                color: #00f5a0;
+                font-size: 10pt;
+                font-weight: bold;
+                background: rgba(0, 245, 160, 0.15);
+                padding: 6px 12px;
+                border-radius: 6px;
+                border: none;
+            }
+        """)
+        layout.addWidget(self.status_indicator)
+        
+        return header
+    
+    def create_analytics_tab(self):
+        """Create analytics and visualization tab matching master UI"""
+        tab = QWidget()
+        
+        # Add scroll area for analytics content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+        """)
+        
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("""
+            QWidget {
+                background: transparent;
+            }
+        """)
+        layout = QVBoxLayout(scroll_content)
+        layout.setSpacing(20)
+        layout.setContentsMargins(15, 15, 15, 15)
+        
+        # Metrics Dashboard Section Header
+        metrics_header = QLabel("📊 Performance Metrics")
+        metrics_header.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 12pt;
+                font-weight: bold;
+                background: rgba(0, 245, 160, 0.15);
+                padding: 8px 14px;
+                border-radius: 6px;
+                border-left: 3px solid #00f5a0;
+            }
+        """)
+        layout.addWidget(metrics_header)
+        
+        # Metrics Dashboard
+        metrics_layout = QGridLayout()
+        metrics_layout.setSpacing(18)
+        metrics_layout.setContentsMargins(0, 10, 0, 10)
+        metrics_layout.setAlignment(Qt.AlignTop)
+        
+        self.metrics_cards = {}
+        self.metrics_values = {}  # Store value labels for updates
+        metrics_data = [
+            ("tasks_completed", "📋 Tasks Done", "0", "#00f5a0"),
+            ("avg_cpu", "💻 Avg CPU", "0%", "#667eea"),
+            ("avg_mem", "🧠 Avg Memory", "0%", "#ff9800"),
+            ("uptime", "⏱️ Uptime", "0m", "#4CAF50")
+        ]
+        
+        for idx, (key, label, default, color) in enumerate(metrics_data):
+            card, value_label = self._create_metric_card(label, default, color)
+            self.metrics_cards[key] = card
+            self.metrics_values[key] = value_label
+            row, col = divmod(idx, 2)
+            metrics_layout.addWidget(card, row, col)
+        
+        # Set column stretch for equal width
+        metrics_layout.setColumnStretch(0, 1)
+        metrics_layout.setColumnStretch(1, 1)
+        # Set row stretch
+        metrics_layout.setRowStretch(0, 0)
+        metrics_layout.setRowStretch(1, 0)
+        
+        layout.addLayout(metrics_layout)
+        
+        # Add spacing
+        layout.addSpacing(15)
+        
+        # Charts Section Header
+        charts_header = QLabel("📈 Data Visualizations")
+        charts_header.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 12pt;
+                font-weight: bold;
+                background: rgba(102, 126, 234, 0.15);
+                padding: 8px 14px;
+                border-radius: 6px;
+                border-left: 3px solid #667eea;
+            }
+        """)
+        layout.addWidget(charts_header)
+        
+        # Charts Grid
+        charts_layout = QGridLayout()
+        charts_layout.setSpacing(18)
+        
+        # Resource History Chart
+        self.resource_history_canvas = self._create_resource_history_chart()
+        self.resource_history_canvas.setMinimumSize(800, 320)
+        self.resource_history_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        charts_layout.addWidget(self.resource_history_canvas, 0, 0, 1, 2)
+        
+        # Network Activity Chart
+        self.network_activity_canvas = self._create_network_activity_chart()
+        self.network_activity_canvas.setMinimumSize(400, 280)
+        self.network_activity_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        charts_layout.addWidget(self.network_activity_canvas, 1, 0)
+        
+        # Task Performance Chart
+        self.task_performance_canvas = self._create_task_performance_chart()
+        self.task_performance_canvas.setMinimumSize(400, 280)
+        self.task_performance_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        charts_layout.addWidget(self.task_performance_canvas, 1, 1)
+        
+        # Set stretch factors for responsive behavior
+        charts_layout.setColumnStretch(0, 1)
+        charts_layout.setColumnStretch(1, 1)
+        charts_layout.setRowStretch(0, 1)
+        charts_layout.setRowStretch(1, 1)
+        
+        layout.addLayout(charts_layout, 1)
+        
+        scroll_area.setWidget(scroll_content)
+        tab_layout = QVBoxLayout(tab)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+        tab_layout.addWidget(scroll_area)
+        
+        return tab
 
     def _create_title_bar(self):
         """Create modern custom title bar with controls"""
@@ -183,42 +556,103 @@ class WorkerUI(QWidget):
         title_layout.addLayout(controls_layout)
 
     def create_connection_panel(self):
+        # Scroll area wrapper for responsiveness
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        
         panel = QFrame()
         panel.setProperty("glass", True)
+        panel.setMinimumWidth(350)
+        panel.setMaximumWidth(500)
         layout = QVBoxLayout(panel)
-        layout.setSpacing(2)
+        layout.setSpacing(12)
+        layout.setContentsMargins(10, 15, 10, 10)
+
+        # Header label
+        hdr = QLabel("⚡ Worker Configuration", panel)
+        hdr.setObjectName("headerLabel")
+        hdr.setAlignment(Qt.AlignCenter)
+        hf = hdr.font()
+        hf.setPointSize(13)
+        hf.setBold(True)
+        hdr.setFont(hf)
+        hdr.setMargin(6)
+        layout.addWidget(hdr)
 
         conn_gb = QGroupBox("Connection Settings")
         conn_layout = QVBoxLayout(conn_gb)
-        conn_layout.setContentsMargins(12, 20, 12, 12)
-        conn_layout.setSpacing(8)
+        conn_layout.setContentsMargins(15, 25, 15, 15)
+        conn_layout.setSpacing(10)
 
         self.ip_label = QLabel("IP Address: –")
-        self.ip_label.setObjectName("ipLabel")
+        self.ip_label.setStyleSheet("font-size: 9pt; font-weight: 600; color: #00f5a0;")
         self.port_input = QLineEdit()
         self.port_input.setPlaceholderText("Port (e.g. 5001)")
         self.port_input.setValidator(QIntValidator(1, 65535))
         self.port_input.setObjectName("portInput")
 
-        self.port_input.setFixedHeight(28)
+        self.port_input.setFixedHeight(36)
         p_font = self.port_input.font()
         p_font.setPointSize(max(10, p_font.pointSize()))
         self.port_input.setFont(p_font)
-        self.port_input.setStyleSheet("QLineEdit { padding: 6px; color: #e6e6fa; background: rgba(255,255,255,0.06); border-radius: 6px; }")
+        self.port_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 12px;
+                color: #e6e6fa;
+                background: rgba(25, 30, 40, 0.9);
+                border: 2px solid rgba(102, 126, 234, 0.25);
+                border-radius: 6px;
+                font-size: 9pt;
+            }
+            QLineEdit:focus {
+                border: 2px solid rgba(102, 126, 234, 0.5);
+                background: rgba(25, 30, 40, 1);
+            }
+        """)
 
         conn_layout.addWidget(self.ip_label)
         conn_layout.addWidget(self.port_input)
         layout.addWidget(conn_gb)
 
         share_gb = QGroupBox("Share Resources")
-        share_gb.setMinimumHeight(200)
+        share_gb.setMinimumHeight(250)
         share_gb.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
 
         share_layout = QVBoxLayout(share_gb)
-        share_layout.setContentsMargins(12, 20, 12, 12)
-        share_layout.setSpacing(8)
+        share_layout.setContentsMargins(15, 25, 15, 15)
+        share_layout.setSpacing(12)
 
-        share_layout.addStretch()
+        checkbox_style = """
+        QCheckBox {
+            color: white;
+            font-size: 8pt;
+            font-weight: 600;
+            spacing: 8px;
+            padding: 2px;
+        }
+        QCheckBox::indicator {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(102, 126, 234, 0.6);
+            border-radius: 3px;
+            background: rgba(25, 30, 40, 0.9);
+        }
+        QCheckBox::indicator:checked {
+            background: rgba(102, 126, 234, 1);
+            border: 2px solid rgba(102, 126, 234, 1);
+            image: url(none);
+        }
+        QCheckBox::indicator:checked:hover {
+            background: rgba(120, 145, 255, 1);
+        }
+        QCheckBox::indicator:hover {
+            border: 2px solid rgba(102, 126, 234, 0.9);
+            background: rgba(35, 40, 50, 1);
+        }
+        """
 
         for text, default in [
             ("CPU Processing", True),
@@ -227,68 +661,167 @@ class WorkerUI(QWidget):
         ]:
             cb = QCheckBox(text)
             cb.setChecked(default)
+            cb.setStyleSheet(checkbox_style)
+            cb.setMinimumHeight(24)
+            cb.setMaximumHeight(28)
             share_layout.addWidget(cb)
 
-        limits = QFormLayout()
-        limits.setContentsMargins(0, 12, 0, 0)
-        limits.setHorizontalSpacing(18)
-
-        limits.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-        limits.setLabelAlignment(Qt.AlignLeft)
-
-        spinbox_style = """
-        QSpinBox {
-            color: #e6e6fa;
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 6px;
-            font-size: 10pt;
-            padding: 4px;
-        }
-        """
-
+        # Resource Limits Section with compact layout
+        share_layout.addSpacing(8)
+        
+        # CPU Limit Row
+        cpu_row = QHBoxLayout()
+        cpu_row.setSpacing(10)
+        
+        lbl_cpu = QLabel("Max CPU:")
+        lbl_cpu.setStyleSheet("color: white; font-size: 8pt; font-weight: 600;")
+        lbl_cpu.setFixedWidth(80)
+        
         self.cpu_limit = QSpinBox()
         self.cpu_limit.setRange(10, 100)
-        self.cpu_limit.setValue(80)
+        self.cpu_limit.setValue(90)
         self.cpu_limit.setSuffix("%")
         self.cpu_limit.setAlignment(Qt.AlignCenter)
-        self.cpu_limit.setStyleSheet(spinbox_style)
-        self.cpu_limit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
+        self.cpu_limit.setFixedHeight(30)
+        self.cpu_limit.setStyleSheet("""
+            QSpinBox {
+                color: white;
+                background: rgba(40, 45, 60, 1);
+                border: 2px solid rgba(102, 126, 234, 0.7);
+                border-radius: 5px;
+                font-size: 9.5pt;
+                font-weight: 600;
+                padding-right: 20px;
+                padding-left: 8px;
+            }
+            QSpinBox:focus {
+                border: 2px solid rgba(102, 126, 234, 1);
+            }
+            QSpinBox:hover {
+                border: 2px solid rgba(102, 126, 234, 0.9);
+            }
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 20px;
+                background: rgba(102, 126, 234, 0.6);
+                border-left: 1px solid rgba(80, 100, 200, 0.5);
+                border-top-right-radius: 3px;
+                font-size: 12pt;
+                font-weight: bold;
+                color: white;
+            }
+            QSpinBox::up-button:hover {
+                background: rgba(102, 126, 234, 0.9);
+            }
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 20px;
+                background: rgba(102, 126, 234, 0.6);
+                border-left: 1px solid rgba(80, 100, 200, 0.5);
+                border-bottom-right-radius: 3px;
+                font-size: 12pt;
+                font-weight: bold;
+                color: white;
+            }
+            QSpinBox::down-button:hover {
+                background: rgba(102, 126, 234, 0.9);
+            }
+        """)
+        
+        cpu_row.addWidget(lbl_cpu)
+        cpu_row.addWidget(self.cpu_limit)
+        
+        # Add arrow labels for CPU spinbox
+        self.cpu_up_arrow = QLabel("▲", self.cpu_limit)
+        self.cpu_up_arrow.setStyleSheet("color: white; background: transparent; font-size: 8pt;")
+        self.cpu_up_arrow.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.cpu_up_arrow.setAlignment(Qt.AlignCenter)
+        
+        self.cpu_down_arrow = QLabel("▼", self.cpu_limit)
+        self.cpu_down_arrow.setStyleSheet("color: white; background: transparent; font-size: 8pt;")
+        self.cpu_down_arrow.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.cpu_down_arrow.setAlignment(Qt.AlignCenter)
+        
+        share_layout.addLayout(cpu_row)
+        
+        # Memory Limit Row
+        mem_row = QHBoxLayout()
+        mem_row.setSpacing(10)
+        
+        lbl_mem = QLabel("Max RAM:")
+        lbl_mem.setStyleSheet("color: white; font-size: 8pt; font-weight: 600;")
+        lbl_mem.setFixedWidth(80)
+        
         self.mem_limit = QSpinBox()
         self.mem_limit.setRange(256, 8192)
-        self.mem_limit.setValue(512)
+        self.mem_limit.setValue(1024)
         self.mem_limit.setSuffix(" MB")
         self.mem_limit.setAlignment(Qt.AlignCenter)
-        self.mem_limit.setStyleSheet(spinbox_style)
-        self.mem_limit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        lbl_cpu = QLabel("Max CPU:")
-        lbl_cpu.setObjectName("dataLabel")
-        lbl_cpu.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-
-        lbl_mem = QLabel("Max Memory:")
-        lbl_mem.setObjectName("dataLabel")
-        lbl_mem.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-
-        cpu_row = QWidget()
-        cpu_layout = QHBoxLayout(cpu_row)
-        cpu_layout.setContentsMargins(0, 0, 0, 0)
-        cpu_layout.addWidget(self.cpu_limit)
-        cpu_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        mem_row = QWidget()
-        mem_layout = QHBoxLayout(mem_row)
-        mem_layout.setContentsMargins(0, 0, 0, 0)
-        mem_layout.addWidget(self.mem_limit)
-        mem_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        limits.addRow(lbl_cpu, cpu_row)
-        limits.addRow(lbl_mem, mem_row)
-
-        share_layout.addLayout(limits)
-
-        share_layout.addStretch()
+        self.mem_limit.setFixedHeight(30)
+        self.mem_limit.setStyleSheet("""
+            QSpinBox {
+                color: white;
+                background: rgba(40, 45, 60, 1);
+                border: 2px solid rgba(102, 126, 234, 0.7);
+                border-radius: 5px;
+                font-size: 9.5pt;
+                font-weight: 600;
+                padding-right: 20px;
+                padding-left: 8px;
+            }
+            QSpinBox:focus {
+                border: 2px solid rgba(102, 126, 234, 1);
+            }
+            QSpinBox:hover {
+                border: 2px solid rgba(102, 126, 234, 0.9);
+            }
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 20px;
+                background: rgba(102, 126, 234, 0.6);
+                border-left: 1px solid rgba(80, 100, 200, 0.5);
+                border-top-right-radius: 3px;
+                font-size: 12pt;
+                font-weight: bold;
+                color: white;
+            }
+            QSpinBox::up-button:hover {
+                background: rgba(102, 126, 234, 0.9);
+            }
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 20px;
+                background: rgba(102, 126, 234, 0.6);
+                border-left: 1px solid rgba(80, 100, 200, 0.5);
+                border-bottom-right-radius: 3px;
+                font-size: 12pt;
+                font-weight: bold;
+                color: white;
+            }
+            QSpinBox::down-button:hover {
+                background: rgba(102, 126, 234, 0.9);
+            }
+        """)
+        
+        mem_row.addWidget(lbl_mem)
+        mem_row.addWidget(self.mem_limit)
+        
+        # Add arrow labels for Memory spinbox
+        self.mem_up_arrow = QLabel("▲", self.mem_limit)
+        self.mem_up_arrow.setStyleSheet("color: white; background: transparent; font-size: 8pt;")
+        self.mem_up_arrow.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.mem_up_arrow.setAlignment(Qt.AlignCenter)
+        
+        self.mem_down_arrow = QLabel("▼", self.mem_limit)
+        self.mem_down_arrow.setStyleSheet("color: white; background: transparent; font-size: 8pt;")
+        self.mem_down_arrow.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.mem_down_arrow.setAlignment(Qt.AlignCenter)
+        
+        share_layout.addLayout(mem_row)
         layout.addWidget(share_gb)
 
         status_gb = QGroupBox("Connection Status")
@@ -319,37 +852,112 @@ class WorkerUI(QWidget):
         self.start_btn = QPushButton("Start Worker")
         self.start_btn.setObjectName("startBtn")
         self.start_btn.clicked.connect(self.start_worker)
-
-        self.start_btn.setMinimumHeight(40)  # Taller button
-        self.start_btn.setMinimumWidth(120)  # Reasonable minimum width
-        self.start_btn.setStyleSheet("QPushButton#startBtn { padding: 8px 16px; font-size: 10pt; font-weight: bold; }")
+        self.start_btn.setMinimumHeight(50)
+        self.start_btn.setMaximumHeight(120)
+        self.start_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.start_btn.setStyleSheet("""
+            QPushButton#startBtn {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #5B7EEA,
+                    stop:1 #5899EA);
+                color: white;
+                border: 2px solid rgba(102, 126, 234, 0.9);
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-size: 9pt;
+                font-weight: 600;
+                text-align: center;
+            }
+            QPushButton#startBtn:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #6F91FF,
+                    stop:1 #6AAAFF);
+                border: 2px solid rgba(111, 145, 255, 1);
+            }
+            QPushButton#startBtn:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4A6BC8,
+                    stop:1 #4781C8);
+                border: 2px solid rgba(74, 107, 200, 1);
+            }
+            QPushButton#startBtn:disabled {
+                background: rgba(80, 90, 110, 0.4);
+                color: rgba(255, 255, 255, 0.4);
+                border: 2px solid rgba(80, 90, 110, 0.3);
+            }
+        """)
 
         self.stop_btn = QPushButton("Stop Worker")
         self.stop_btn.setObjectName("stopBtn")
         self.stop_btn.clicked.connect(self.stop_worker)
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setMinimumHeight(40)  # Taller button
-        self.stop_btn.setMinimumWidth(120)  # Reasonable minimum width
-        self.stop_btn.setStyleSheet("QPushButton#stopBtn { padding: 8px 16px; font-size: 10pt; font-weight: bold; }")
+        self.stop_btn.setMinimumHeight(50)
+        self.stop_btn.setMaximumHeight(120)
+        self.stop_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.stop_btn.setStyleSheet("""
+            QPushButton#stopBtn {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #E63946,
+                    stop:1 #F55A64);
+                color: white;
+                border: 2px solid rgba(230, 57, 70, 0.9);
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-size: 9pt;
+                font-weight: 600;
+                text-align: center;
+            }
+            QPushButton#stopBtn:hover:enabled {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #FF4D5A,
+                    stop:1 #FF6B78);
+                border: 2px solid rgba(255, 77, 90, 1);
+            }
+            QPushButton#stopBtn:pressed:enabled {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #C22E3A,
+                    stop:1 #D13E4C);
+                border: 2px solid rgba(194, 46, 58, 1);
+            }
+            QPushButton#stopBtn:disabled {
+                background: rgba(80, 80, 90, 0.35);
+                color: rgba(255, 255, 255, 0.35);
+                border: 2px solid rgba(80, 80, 90, 0.25);
+            }
+        """)
 
         btn_container = QFrame()
         btn_layout = QVBoxLayout(btn_container)
-        btn_layout.setContentsMargins(0, 15, 0, 0)  # More top margin
-        btn_layout.setSpacing(12)  # Better spacing between buttons
+        btn_layout.setContentsMargins(0, 15, 0, 0)
+        btn_layout.setSpacing(12)
         btn_layout.addWidget(self.start_btn)
         btn_layout.addWidget(self.stop_btn)
         layout.addWidget(btn_container)
 
         layout.addStretch()
-        self.apply_shadow(panel)
-        return panel
+        scroll.setWidget(panel)
+        return scroll
 
     def create_task_panel(self):
+        # Scroll area wrapper for responsiveness
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        
         panel = QFrame()
         panel.setProperty("glass", True)
+        panel.setStyleSheet("""
+            QFrame {
+                background: rgba(20, 25, 35, 0.5);
+                border-radius: 8px;
+            }
+        """)
         layout = QVBoxLayout(panel)
-        layout.setSpacing(10)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(15)
+        layout.setContentsMargins(15, 15, 15, 15)
+        panel.setMinimumWidth(500)
 
         tasks_gb = QGroupBox("Current Tasks")
         v = QVBoxLayout(tasks_gb)
@@ -408,7 +1016,7 @@ class WorkerUI(QWidget):
         ov.addWidget(self.task_output_display)
         layout.addWidget(output_gb)
 
-        res_gb = QGroupBox("💻 System Resources (Real-time)")
+        res_gb = QGroupBox("System Resources (Real-time)")
         rv = QVBoxLayout(res_gb)
         rv.setContentsMargins(10, 15, 10, 10)
         rv.setSpacing(8)
@@ -451,7 +1059,7 @@ class WorkerUI(QWidget):
 
         layout.addWidget(res_gb)
 
-        log_gb = QGroupBox("📋 Task Execution Log")
+        log_gb = QGroupBox("Task Execution Log")
         lv = QVBoxLayout(log_gb)
         lv.setContentsMargins(12, 15, 12, 12)  # Better margins
         lv.setSpacing(10)  # Increased spacing
@@ -536,8 +1144,8 @@ class WorkerUI(QWidget):
 
         layout.addLayout(btns)
 
-        self.apply_shadow(panel)
-        return panel
+        scroll.setWidget(panel)
+        return scroll
 
     def _make_bar(self, text, color):
         h = QHBoxLayout()
@@ -658,6 +1266,12 @@ class WorkerUI(QWidget):
             return
 
         task_name = data.get("name", "Unnamed Task")
+        
+        # Special handling for VIDEO_PLAYBACK tasks
+        if task_name == "VIDEO_PLAYBACK":
+            self.handle_video_playback_task(task_id, payload, task_name)
+            return
+        
         receive_time = time.strftime("%Y-%m-%d %H:%M:%S")
         self.log(f"📥 Task received: '{task_name}' [ID: {task_id[:8]}...] at {receive_time}")
         self.log(f"   📋 Task queued for execution")
@@ -675,128 +1289,223 @@ class WorkerUI(QWidget):
         QTimer.singleShot(0, self._refresh_tasks_display)
         QTimer.singleShot(0, self._refresh_output_display)
 
-        def run_task():
+        # Get current resource limits from UI
+        cpu_limit = int(self.cpu_limit.value())
+        mem_limit = int(self.mem_limit.value())
+        
+        # Apply resource limits to task executor
+        self.task_executor.set_resource_limits(cpu_percent=cpu_limit, memory_mb=mem_limit)
 
-            time.sleep(0.1)
+        # Create and start background task thread (prevents UI freezing)
+        task_thread = TaskExecutionThread(
+            task_id=task_id,
+            task_name=task_name,
+            code=code,
+            payload=payload,
+            task_executor=self.task_executor,
+            network=self.network,
+            worker_ip=self.network.ip
+        )
+        
+        # Connect signals for thread-safe UI updates
+        task_thread.log_signal.connect(self.log)
+        task_thread.progress_signal.connect(self._handle_progress_update)
+        task_thread.state_update_signal.connect(self._handle_state_update)
+        task_thread.refresh_display_signal.connect(self._refresh_tasks_display)
+        task_thread.task_complete_signal.connect(self._handle_task_completion)
+        
+        # Track the thread
+        self.active_task_threads[task_id] = task_thread
+        
+        # Start execution in background
+        task_thread.start()
+    
+    def handle_video_playback_task(self, task_id, payload, task_name):
+        """Handle video playback task by opening video player window"""
+        video_url = payload.get("video_url", "")
+        video_title = payload.get("title", "Video Player")
+        
+        receive_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.log(f"🎬 Video playback task received: '{task_name}' [ID: {task_id[:8]}...]")
+        self.log(f"   📺 URL: {video_url}")
+        self.log(f"   ⏰ Received at: {receive_time}")
+        
+        if not video_url:
+            error_msg = "No video URL provided"
+            self.log(f"   ❌ Error: {error_msg}")
+            self._send_error_to_master(task_id, error_msg)
+            return
+        
+        # Check if video player is available
+        if not VIDEO_PLAYER_AVAILABLE:
+            error_msg = "Video player not available. VLC is not installed. Please install VLC media player and python-vlc package."
+            self.log(f"   ⚠️  Warning: {error_msg}")
             
-            start_time = time.time()
-            start_time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time))
-
-            self._set_task_state(task_id, status="executing", progress=0, started_at=start_time)
-
-            self.log("─" * 60)
-            self.log(f"▶️  TASK EXECUTION STARTED")
-            self.log(f"   📋 Task: '{task_name}'")
-            self.log(f"   🆔 ID: {task_id[:8]}...")
-            self.log(f"   ⏰ Start Time: {start_time_str}")
-            self.log(f"   🖥️  Worker: {socket.gethostname()} [{self.network.ip}]")
-            self.log(f"   ⚙️  Status: EXECUTING")
-            self.log("─" * 60)
-
+            # Show error message to user
+            QMessageBox.warning(
+                self,
+                "Video Player Not Available",
+                f"{error_msg}\n\n"
+                f"To enable video playback:\n"
+                f"1. Install VLC Media Player from https://www.videolan.org/\n"
+                f"2. Run: pip install python-vlc\n"
+                f"3. Restart the application\n\n"
+                f"For now, opening video URL in browser..."
+            )
+            
+            # Open in browser as fallback
+            try:
+                import webbrowser
+                webbrowser.open(video_url)
+                self.log(f"   🌐 Opened video URL in browser as fallback")
+                
+                # Send success response
+                with self.tasks_lock:
+                    self.current_tasks[task_id] = {
+                        "status": "done",
+                        "progress": 100,
+                        "started_at": time.time(),
+                        "completed_at": time.time(),
+                        "memory_used_mb": 0,
+                        "output": f"Video opened in browser (VLC not available): {video_title}\nURL: {video_url}",
+                        "name": task_name
+                    }
+                
+                result_payload = {
+                    "success": True,
+                    "result": {
+                        "status": "opened_in_browser",
+                        "video_url": video_url,
+                        "title": video_title,
+                        "note": "VLC not available, opened in browser"
+                    },
+                    "error": None,
+                    "stdout": f"Opened in browser: {video_url}",
+                    "stderr": None,
+                    "execution_time": 0.1,
+                    "memory_used": 0
+                }
+                self.network.send_task_result(task_id, result_payload)
+                
+            except Exception as e:
+                self.log(f"   ❌ Failed to open in browser: {e}")
+                self._send_error_to_master(task_id, str(e))
+            
             QTimer.singleShot(0, self._refresh_tasks_display)
-            self.send_progress_update(task_id, 0)
-
-            def progress_with_log(pct):
-
-                if pct in [25, 50, 75, 100]:
-                    self.log(f"⏳ Task '{task_name}' [{task_id[:8]}...] progress: {pct}%")
-                self.send_progress_update(task_id, pct)
-
-                QTimer.singleShot(0, self._refresh_tasks_display)
-            
-            result = self.task_executor.execute_task(
-                code,
-                payload,
-                progress_callback=progress_with_log
-            )
-
-            status = "done" if result.get("success") else "failed"
-            progress_final = 100 if result.get("success") else max(0, min(99, self._get_task_progress(task_id)))
-            self.send_progress_update(task_id, progress_final)
-
-            end_time = time.time()
-            end_time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(end_time))
-            execution_time = result.get("execution_time", end_time - start_time)
-            memory_used = result.get("memory_used", 0)
-
-            if result.get("success"):
-                self.log(f"✅ Task completed: '{task_name}' [ID: {task_id[:8]}...]")
-                self.log(f"   ⏱️  Ended at: {end_time_str}")
-                self.log(f"   ⏱️  Execution time: {execution_time:.2f}s")
-                self.log(f"   💾 Memory used: {memory_used:.2f} MB")
-                self.log(f"   ✓ Status: SUCCESS (100%)")
-            else:
-                error_msg = result.get("error", "Unknown error")
-                self.log(f"❌ Task failed: '{task_name}' [ID: {task_id[:8]}...]")
-                self.log(f"   ⏱️  Ended at: {end_time_str}")
-                self.log(f"   ⏱️  Execution time: {execution_time:.2f}s")
-                self.log(f"   💾 Memory used: {memory_used:.2f} MB")
-                self.log(f"   ✗ Error: {error_msg[:100]}")
-            self.log("─" * 60)  # Separator line for readability
-
-            output_parts = []
-            if result.get("stdout"):
-                output_parts.append(f"STDOUT:\n{result['stdout']}")
-            if result.get("stderr"):
-                output_parts.append(f"STDERR:\n{result['stderr']}")
-
-            result_val = result.get("result")
-            if result_val is not None:
-                if isinstance(result_val, dict):
-                    if result_val:  # Non-empty dict
-                        output_parts.append(f"RESULT:\n{json.dumps(result_val, indent=2)}")
-                    else:
-                        output_parts.append(f"RESULT:\n{{}}")
-                elif isinstance(result_val, (list, tuple)):
-                    if result_val:
-                        output_parts.append(f"RESULT:\n{json.dumps(result_val, indent=2)}")
-                    else:
-                        output_parts.append(f"RESULT:\n[]")
-                elif isinstance(result_val, str):
-                    if result_val:
-                        output_parts.append(f"RESULT:\n{result_val}")
-                    else:
-                        output_parts.append(f"RESULT:\n(empty string)")
-                elif isinstance(result_val, bool):
-                    output_parts.append(f"RESULT:\n{result_val}")
-                elif isinstance(result_val, (int, float)):
-                    output_parts.append(f"RESULT:\n{result_val}")
-                else:
-                    output_parts.append(f"RESULT:\n{str(result_val)}")
-            else:
-
-                if result.get("success") and not result.get("error"):
-                    output_parts.append("RESULT:\n(Task completed but returned None)")
-            
-            if result.get("error"):
-                output_parts.append(f"ERROR:\n{result['error']}")
-            
-            output_text = "\n\n".join(output_parts) if output_parts else "No output generated."
-            memory_used_mb = result.get("memory_used", 0)
-            
-            result_payload = {
-                "success": result.get("success"),
-                "result": result.get("result"),
-                "error": result.get("error"),
-                "stdout": result.get("stdout"),
-                "stderr": result.get("stderr"),
-                "execution_time": result.get("execution_time"),
-                "memory_used": memory_used_mb
+            return
+        
+        # Track task
+        with self.tasks_lock:
+            self.current_tasks[task_id] = {
+                "status": "playing",
+                "progress": 100,
+                "started_at": time.time(),
+                "memory_used_mb": 0,
+                "output": f"Playing video: {video_title}\nURL: {video_url}",
+                "name": task_name
             }
-            self.network.send_task_result(task_id, result_payload)
-
-            self._set_task_state(
-                task_id, 
-                status=status, 
-                progress=progress_final, 
-                completed_at=time.time(),
-                memory_used_mb=memory_used_mb,
-                output=output_text
-            )
-
-            QTimer.singleShot(0, lambda: self._schedule_task_cleanup(task_id))
-
-        threading.Thread(target=run_task, daemon=True).start()
+        
+        QTimer.singleShot(0, self._refresh_tasks_display)
+        QTimer.singleShot(0, self._refresh_output_display)
+        
+        def open_player():
+            """Open video player in main thread"""
+            try:
+                self.log(f"   🎬 Opening video player window...")
+                
+                # Create and show video player window
+                player = VideoPlayerWindow(video_url, video_title, parent=self)
+                
+                # Track the player window
+                if not hasattr(self, 'video_players'):
+                    self.video_players = []
+                self.video_players.append(player)
+                
+                # Connect close signal to cleanup
+                def on_player_closed():
+                    if player in self.video_players:
+                        self.video_players.remove(player)
+                    
+                    end_time = time.time()
+                    start_time = self.current_tasks.get(task_id, {}).get("started_at", end_time)
+                    duration = end_time - start_time
+                    
+                    self.log(f"   🔒 Video player closed after {duration:.1f}s")
+                    
+                    # Send completion result to master
+                    result_payload = {
+                        "success": True,
+                        "result": {
+                            "status": "completed",
+                            "video_url": video_url,
+                            "title": video_title,
+                            "duration": duration
+                        },
+                        "error": None,
+                        "stdout": f"Video played for {duration:.1f} seconds",
+                        "stderr": None,
+                        "execution_time": duration,
+                        "memory_used": 0
+                    }
+                    self.network.send_task_result(task_id, result_payload)
+                    
+                    # Update task status
+                    with self.tasks_lock:
+                        if task_id in self.current_tasks:
+                            self.current_tasks[task_id]["status"] = "done"
+                            self.current_tasks[task_id]["completed_at"] = end_time
+                    
+                    QTimer.singleShot(0, self._refresh_tasks_display)
+                    QTimer.singleShot(5000, lambda: self._schedule_task_cleanup(task_id))
+                
+                player.closed.connect(on_player_closed)
+                player.show()
+                
+                self.log(f"   ✅ Video player opened successfully")
+                
+                # Send initial success message to master
+                msg = NetworkMessage(MessageType.PROGRESS_UPDATE, {
+                    'task_id': task_id,
+                    'progress': 100
+                })
+                self.network.send_message_to_master(msg)
+                
+            except Exception as e:
+                error_msg = f"Failed to open video player: {str(e)}"
+                self.log(f"   ❌ Error: {error_msg}")
+                self._send_error_to_master(task_id, error_msg)
+                
+                # Update task status to failed
+                with self.tasks_lock:
+                    if task_id in self.current_tasks:
+                        self.current_tasks[task_id]["status"] = "failed"
+                        self.current_tasks[task_id]["output"] = error_msg
+                
+                QTimer.singleShot(0, self._refresh_tasks_display)
+        
+        # Schedule player opening on main thread
+        QTimer.singleShot(100, open_player)
+    
+    def _handle_progress_update(self, task_id: str, progress: int):
+        """Handle progress update from task thread (thread-safe)"""
+        self.send_progress_update(task_id, progress)
+    
+    def _handle_state_update(self, task_id: str, state_dict: dict):
+        """Handle state update from task thread (thread-safe)"""
+        with self.tasks_lock:
+            if task_id in self.current_tasks:
+                self.current_tasks[task_id].update(state_dict)
+    
+    def _handle_task_completion(self, task_id: str, result: dict, exec_time: float, memory_used: float):
+        """Handle task completion from thread (thread-safe)"""
+        # Clean up the thread
+        if task_id in self.active_task_threads:
+            thread = self.active_task_threads[task_id]
+            thread.wait(100)  # Wait max 100ms for thread to finish
+            del self.active_task_threads[task_id]
+        
+        # Schedule cleanup
+        QTimer.singleShot(0, lambda: self._schedule_task_cleanup(task_id))
 
     def send_progress_update(self, task_id: str, progress: int):
         clamped = max(0, min(100, int(progress)))
@@ -1061,6 +1770,292 @@ class WorkerUI(QWidget):
     def _get_task_progress(self, task_id: str) -> int:
         with self.tasks_lock:
             return self.current_tasks.get(task_id, {}).get("progress", 0)
+    
+    def _create_metric_card(self, title, value, color):
+        """Create a metric card widget with proper styling and layout"""
+        card = QFrame()
+        card.setObjectName("metricCard")
+        card.setStyleSheet(f"""
+            QFrame#metricCard {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(35, 42, 58, 0.95),
+                    stop:1 rgba(28, 34, 48, 0.95));
+                border: 2px solid {color};
+                border-radius: 12px;
+                padding: 0px;
+            }}
+            QFrame#metricCard:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(40, 48, 65, 0.98),
+                    stop:1 rgba(32, 38, 52, 0.98));
+                border: 2px solid {color};
+            }}
+        """)
+        card.setMinimumHeight(120)
+        card.setMaximumHeight(140)
+        card.setMinimumWidth(200)
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        
+        layout = QVBoxLayout(card)
+        layout.setSpacing(6)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setAlignment(Qt.AlignTop)
+        
+        # Title label with icon
+        title_label = QLabel(title)
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {color};
+                font-size: 10.5pt;
+                font-weight: 600;
+                background: transparent;
+                border: none;
+                padding: 0px;
+            }}
+        """)
+        title_label.setWordWrap(False)
+        title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        title_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        
+        # Value label
+        value_label = QLabel(value)
+        value_label.setObjectName("metricValue")
+        value_label.setStyleSheet("""
+            QLabel {
+                color: rgba(255, 255, 255, 0.98);
+                font-size: 26pt;
+                font-weight: 800;
+                background: transparent;
+                border: none;
+                padding: 4px 0px;
+            }
+        """)
+        value_label.setWordWrap(False)
+        value_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        value_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        layout.addStretch()
+        
+        # Add subtle shadow effect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(15)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        shadow.setOffset(0, 3)
+        card.setGraphicsEffect(shadow)
+        
+        return card, value_label
+    
+    def _create_resource_history_chart(self):
+        """Create resource usage history chart"""
+        fig = Figure(figsize=(10, 3), facecolor='#1a1f2e')
+        canvas = FigureCanvas(fig)
+        canvas.setMinimumHeight(220)
+        canvas.setStyleSheet("background: transparent; border: 2px solid rgba(100, 255, 160, 0.25); border-radius: 10px;")
+        
+        self.resource_ax = fig.add_subplot(111)
+        self.resource_ax.set_facecolor('#1a1f2e')
+        fig.tight_layout(pad=2)
+        
+        return canvas
+    
+    def _create_network_activity_chart(self):
+        """Create network activity chart"""
+        fig = Figure(figsize=(5, 3), facecolor='#1a1f2e')
+        canvas = FigureCanvas(fig)
+        canvas.setMinimumHeight(180)
+        canvas.setStyleSheet("background: transparent; border: 2px solid rgba(100, 255, 160, 0.25); border-radius: 10px;")
+        
+        self.network_ax = fig.add_subplot(111)
+        self.network_ax.set_facecolor('#1a1f2e')
+        fig.tight_layout(pad=2)
+        
+        return canvas
+    
+    def _create_task_performance_chart(self):
+        """Create task performance chart"""
+        fig = Figure(figsize=(5, 3), facecolor='#1a1f2e')
+        canvas = FigureCanvas(fig)
+        canvas.setMinimumHeight(180)
+        canvas.setStyleSheet("background: transparent; border: 2px solid rgba(100, 255, 160, 0.25); border-radius: 10px;")
+        
+        self.task_perf_ax = fig.add_subplot(111)
+        self.task_perf_ax.set_facecolor('#1a1f2e')
+        fig.tight_layout(pad=2)
+        
+        return canvas
+    
+    def update_visualization_data(self):
+        """Update visualization data and refresh charts"""
+        try:
+            # Get current resource usage
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            mem = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            # Update history
+            self.cpu_history.append(cpu_percent)
+            self.mem_history.append(mem.percent)
+            self.disk_history.append(disk.percent)
+            
+            # Calculate network throughput
+            try:
+                net = psutil.net_io_counters()
+                if hasattr(self, '_last_net_bytes'):
+                    bytes_diff = (net.bytes_sent + net.bytes_recv) - self._last_net_bytes
+                    kb_per_sec = bytes_diff / 1024  # KB/s
+                    self.network_history.append(kb_per_sec)
+                else:
+                    self.network_history.append(0)
+                self._last_net_bytes = net.bytes_sent + net.bytes_recv
+            except:
+                self.network_history.append(0)
+            
+            # Update task count history
+            with self.tasks_lock:
+                self.task_count_history.append(len(self.current_tasks))
+            
+            # Calculate uptime
+            if hasattr(self, '_start_time'):
+                uptime_seconds = time.time() - self._start_time
+                uptime_minutes = uptime_seconds / 60
+                if uptime_minutes < 60:
+                    uptime_str = f"{uptime_minutes:.0f}m"
+                else:
+                    uptime_hours = uptime_minutes / 60
+                    uptime_str = f"{uptime_hours:.1f}h"
+            else:
+                self._start_time = time.time()
+                uptime_str = "0m"
+            
+            # Calculate average CPU and Memory
+            avg_cpu = sum(self.cpu_history) / len(self.cpu_history) if self.cpu_history else 0
+            avg_mem = sum(self.mem_history) / len(self.mem_history) if self.mem_history else 0
+            
+            # Count completed tasks
+            with self.tasks_lock:
+                completed_count = sum(1 for meta in self.current_tasks.values() 
+                                    if meta.get("status") in ["done", "completed"])
+            
+            # Update metric cards using the stored value labels
+            self.metrics_values["tasks_completed"].setText(str(completed_count))
+            self.metrics_values["avg_cpu"].setText(f"{avg_cpu:.1f}%")
+            self.metrics_values["avg_mem"].setText(f"{avg_mem:.1f}%")
+            self.metrics_values["uptime"].setText(uptime_str)
+            
+            # Update charts
+            self._update_resource_history_chart()
+            self._update_network_activity_chart()
+            self._update_task_performance_chart()
+            
+        except Exception as e:
+            print(f"[DEBUG] Error updating visualizations: {e}")
+    
+    def _update_resource_history_chart(self):
+        """Update resource usage history chart"""
+        try:
+            self.resource_ax.clear()
+            
+            if len(self.cpu_history) > 0:
+                times = list(range(len(self.cpu_history)))
+                
+                self.resource_ax.plot(times, list(self.cpu_history), color='#00f5a0', 
+                                     linewidth=2, label='CPU %', alpha=0.9)
+                self.resource_ax.plot(times, list(self.mem_history), color='#667eea', 
+                                     linewidth=2, label='Memory %', alpha=0.9)
+                self.resource_ax.plot(times, list(self.disk_history), color='#ffb74d', 
+                                     linewidth=2, label='Disk %', alpha=0.9)
+                
+                self.resource_ax.fill_between(times, list(self.cpu_history), alpha=0.2, color='#00f5a0')
+                
+                self.resource_ax.set_title('Resource Usage History (Last 60s)', 
+                                          color='white', fontsize=11, fontweight='bold', pad=10)
+                self.resource_ax.set_xlabel('Time (s)', color='white', fontsize=8)
+                self.resource_ax.set_ylabel('Usage %', color='white', fontsize=8)
+                self.resource_ax.tick_params(colors='white', labelsize=7)
+                self.resource_ax.legend(facecolor='#1a1f2e', edgecolor='white', 
+                                       labelcolor='white', fontsize=8, loc='upper left')
+                self.resource_ax.grid(True, alpha=0.2, color='white')
+                self.resource_ax.set_ylim(0, 100)
+                self.resource_ax.spines['bottom'].set_color('white')
+                self.resource_ax.spines['left'].set_color('white')
+                self.resource_ax.spines['top'].set_visible(False)
+                self.resource_ax.spines['right'].set_visible(False)
+            else:
+                self.resource_ax.text(0.5, 0.5, 'Collecting Data...', ha='center', va='center',
+                                     color='white', fontsize=12, transform=self.resource_ax.transAxes)
+                self.resource_ax.set_title('Resource Usage History', 
+                                          color='white', fontsize=11, fontweight='bold', pad=10)
+            
+            self.resource_history_canvas.draw()
+        except Exception as e:
+            print(f"[DEBUG] Error updating resource history chart: {e}")
+    
+    def _update_network_activity_chart(self):
+        """Update network activity chart"""
+        try:
+            self.network_ax.clear()
+            
+            if len(self.network_history) > 0:
+                times = list(range(len(self.network_history)))
+                values = list(self.network_history)
+                
+                self.network_ax.plot(times, values, color='#667eea', linewidth=2)
+                self.network_ax.fill_between(times, values, alpha=0.3, color='#667eea')
+                
+                self.network_ax.set_title('Network Activity', 
+                                         color='white', fontsize=11, fontweight='bold', pad=10)
+                self.network_ax.set_xlabel('Time (s)', color='white', fontsize=8)
+                self.network_ax.set_ylabel('KB/s', color='white', fontsize=8)
+                self.network_ax.tick_params(colors='white', labelsize=7)
+                self.network_ax.grid(True, alpha=0.2, color='white')
+                self.network_ax.spines['bottom'].set_color('white')
+                self.network_ax.spines['left'].set_color('white')
+                self.network_ax.spines['top'].set_visible(False)
+                self.network_ax.spines['right'].set_visible(False)
+            else:
+                self.network_ax.text(0.5, 0.5, 'No Data', ha='center', va='center',
+                                    color='white', fontsize=12, transform=self.network_ax.transAxes)
+                self.network_ax.set_title('Network Activity', 
+                                         color='white', fontsize=11, fontweight='bold', pad=10)
+            
+            self.network_activity_canvas.draw()
+        except Exception as e:
+            print(f"[DEBUG] Error updating network activity chart: {e}")
+    
+    def _update_task_performance_chart(self):
+        """Update task performance chart"""
+        try:
+            self.task_perf_ax.clear()
+            
+            if len(self.task_count_history) > 0:
+                times = list(range(len(self.task_count_history)))
+                values = list(self.task_count_history)
+                
+                self.task_perf_ax.plot(times, values, color='#00f5a0', linewidth=2, 
+                                      marker='o', markersize=3)
+                self.task_perf_ax.fill_between(times, values, alpha=0.3, color='#00f5a0')
+                
+                self.task_perf_ax.set_title('Active Tasks Over Time', 
+                                           color='white', fontsize=11, fontweight='bold', pad=10)
+                self.task_perf_ax.set_xlabel('Time (s)', color='white', fontsize=8)
+                self.task_perf_ax.set_ylabel('Task Count', color='white', fontsize=8)
+                self.task_perf_ax.tick_params(colors='white', labelsize=7)
+                self.task_perf_ax.grid(True, alpha=0.2, color='white')
+                self.task_perf_ax.spines['bottom'].set_color('white')
+                self.task_perf_ax.spines['left'].set_color('white')
+                self.task_perf_ax.spines['top'].set_visible(False)
+                self.task_perf_ax.spines['right'].set_visible(False)
+            else:
+                self.task_perf_ax.text(0.5, 0.5, 'No Task Data', ha='center', va='center',
+                                      color='white', fontsize=12, transform=self.task_perf_ax.transAxes)
+                self.task_perf_ax.set_title('Active Tasks Over Time', 
+                                           color='white', fontsize=11, fontweight='bold', pad=10)
+            
+            self.task_performance_canvas.draw()
+        except Exception as e:
+            print(f"[DEBUG] Error updating task performance chart: {e}")
 
     def closeEvent(self, e):
         """Handle window close event - cleanup resources"""
@@ -1076,6 +2071,25 @@ class WorkerUI(QWidget):
             e.accept()
 
 if __name__ == "__main__":
+    import ctypes
     app = QApplication(sys.argv)
+    
+    # Set app ID for Windows taskbar
+    try:
+        myappid = 'winlink.fyp.worker.2.0'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except:
+        pass
+    
+    # Set app icon
+    ROOT = os.path.abspath(os.path.join(__file__, "..", ".."))
+    icon_path = os.path.join(ROOT, "assets", "WinLink_logo.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    
+    # Apply stylesheet
+    app.setStyleSheet(STYLE_SHEET)
+    
     win = WorkerUI()
+    win.showMaximized()
     sys.exit(app.exec_())

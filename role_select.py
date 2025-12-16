@@ -2,7 +2,7 @@ import sys
 import os
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QGraphicsDropShadowEffect
+    QPushButton, QFrame, QGraphicsDropShadowEffect, QSizePolicy, QScrollArea
 )
 from PyQt5.QtGui import QColor, QIcon, QPixmap
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize
@@ -16,29 +16,31 @@ class RoleCard(QFrame):
         super().__init__(parent)
         self.setObjectName("roleCard")
         self.setProperty("role", role)  # 'master' or 'worker'
-        self.setFixedSize(450, 420)
+        self.setMinimumSize(350, 380)
+        self.setMaximumSize(500, 480)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setCursor(Qt.PointingHandCursor)
         self.role = role
 
         if role == 'master':
             self.card_accent = '#00ffe0'
-            border_color = 'rgba(0, 255, 224, 0.3)'
-            hover_border = 'rgba(0, 255, 224, 0.6)'
+            self.border_color = 'rgba(0, 255, 224, 0.3)'
+            self.hover_border = 'rgba(0, 255, 224, 0.6)'
         else:
             self.card_accent = '#ff6b6b'
-            border_color = 'rgba(255, 107, 107, 0.3)'
-            hover_border = 'rgba(255, 107, 107, 0.6)'
+            self.border_color = 'rgba(255, 107, 107, 0.3)'
+            self.hover_border = 'rgba(255, 107, 107, 0.6)'
         
         self.setStyleSheet(f"""
             QFrame#roleCard {{
                 background: rgba(255, 255, 255, 0.12);
-                border: 2px solid {border_color};
+                border: 2px solid {self.border_color};
                 border-radius: 20px;
                 padding: 5px;
             }}
             QFrame#roleCard:hover {{
                 background: rgba(255, 255, 255, 0.18);
-                border: 2px solid {hover_border};
+                border: 2px solid {self.hover_border};
             }}
         """)
         
@@ -124,36 +126,22 @@ class RoleCard(QFrame):
         self.setGraphicsEffect(self.shadow)
 
     def setup_animations(self):
-
-        from PyQt5.QtCore import QPropertyAnimation, QSize
-        self.scale_animation = QPropertyAnimation(self, b"size")
-        self.scale_animation.setDuration(200)
+        # No size animation needed - just use hover effects
+        pass
 
     def enterEvent(self, event):
-
+        # Enhanced shadow on hover
         self.shadow.setBlurRadius(35)
         self.shadow.setYOffset(12)
-        self.shadow.setColor(QColor(0, 245, 160, 150) if self.role == "master" else QColor(76, 175, 80, 150))
-
-        current_size = self.size()
-        new_size = QSize(current_size.width() + 4, current_size.height() + 4)
-        self.scale_animation.setStartValue(current_size)
-        self.scale_animation.setEndValue(new_size)
-        self.scale_animation.start()
+        self.shadow.setColor(QColor(0, 245, 160, 150) if self.role == "master" else QColor(255, 107, 107, 150))
         
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-
+        # Reset shadow
         self.shadow.setBlurRadius(25)
         self.shadow.setYOffset(8)
         self.shadow.setColor(QColor(0, 0, 0, 120))
-
-        current_size = self.size()
-        normal_size = QSize(420, 340)
-        self.scale_animation.setStartValue(current_size)
-        self.scale_animation.setEndValue(normal_size)
-        self.scale_animation.start()
         
         super().leaveEvent(event)
 
@@ -162,6 +150,7 @@ class RoleSelectScreen(QWidget):
         super().__init__()
         self.setObjectName("roleSelectScreen")
         self.setWindowTitle("WinLink – Select Your Role")
+        self.setMinimumSize(900, 700)
         
         self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
@@ -181,18 +170,49 @@ class RoleSelectScreen(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Scrollable content area for responsiveness
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: rgba(255, 255, 255, 0.05);
+                width: 12px;
+                border-radius: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(0, 255, 224, 0.3);
+                border-radius: 6px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(0, 255, 224, 0.5);
+            }
+        """)
+
         content_widget = QWidget()
         content_widget.setObjectName("contentArea")
+        content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(60, 60, 60, 80)
-        content_layout.setSpacing(50)
+        content_layout.setContentsMargins(60, 40, 60, 60)
+        content_layout.setSpacing(30)
 
-        main_layout.addWidget(content_widget, 1)
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
 
         self.main_title = QLabel("🔗 Choose Your Role")
         self.main_title.setAlignment(Qt.AlignCenter)
+        self.main_title.setWordWrap(True)
+        self.main_title.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.main_title.setStyleSheet("""
-            font-size: 28px;
+            font-size: clamp(20px, 4vw, 32px);
             font-weight: bold;
             color: #00ffe0;
             margin: 20px;
@@ -204,16 +224,17 @@ class RoleSelectScreen(QWidget):
         )
         self.subtitle.setWordWrap(True)
         self.subtitle.setAlignment(Qt.AlignCenter)
+        self.subtitle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.subtitle.setStyleSheet("""
-            font-size: 16px;
+            font-size: 14px;
             color: #c1d5e0;
             margin: 10px 40px 30px 40px;
         """)
         content_layout.addWidget(self.subtitle)
 
         cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(60)
-        cards_layout.setContentsMargins(40, 20, 40, 20)
+        cards_layout.setSpacing(40)
+        cards_layout.setContentsMargins(20, 20, 20, 20)
 
         master = RoleCard(
             role="master",
@@ -243,17 +264,19 @@ class RoleSelectScreen(QWidget):
         )
         worker.mousePressEvent = lambda e: self.open_worker_ui()
 
-        cards_layout.addStretch()
-        cards_layout.addWidget(master)
-        cards_layout.addWidget(worker)
-        cards_layout.addStretch()
+        cards_layout.addStretch(1)
+        cards_layout.addWidget(master, 3)
+        cards_layout.addWidget(worker, 3)
+        cards_layout.addStretch(1)
 
         content_layout.addLayout(cards_layout)
 
         content_layout.addStretch()
         
         self.back_btn = QPushButton("← Back to Welcome")
-        self.back_btn.setFixedSize(200, 40)
+        self.back_btn.setMinimumSize(180, 40)
+        self.back_btn.setMaximumSize(220, 45)
+        self.back_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.back_btn.clicked.connect(self.go_back)
         self.back_btn.setStyleSheet("""
             QPushButton {
@@ -410,4 +433,5 @@ if __name__ == "__main__":
         app.setWindowIcon(QIcon(icon_path))
     
     win = RoleSelectScreen()
+    win.showMaximized()
     sys.exit(app.exec_())

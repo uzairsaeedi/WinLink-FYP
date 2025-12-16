@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton,
     QVBoxLayout, QHBoxLayout, QFrame, QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect
+    QGraphicsOpacityEffect, QSizePolicy, QScrollArea
 )
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect
 from PyQt5.QtGui import QColor, QFont, QIcon
@@ -14,6 +14,7 @@ class WelcomeScreen(QWidget):
         super().__init__()
         self.setObjectName("welcomeScreen")
         self.setWindowTitle("WinLink - Distributed Computing Platform")
+        self.setMinimumSize(1000, 750)
         self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
         
@@ -31,38 +32,71 @@ class WelcomeScreen(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
+        # Scrollable content area for responsiveness
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: rgba(255, 255, 255, 0.05);
+                width: 12px;
+                border-radius: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(0, 255, 224, 0.3);
+                border-radius: 6px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(0, 255, 224, 0.5);
+            }
+        """)
+        
         content_widget = QWidget()
         content_widget.setObjectName("contentArea")
+        content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(60, 40, 60, 60)
+        content_layout.setContentsMargins(40, 30, 40, 40)
         content_layout.setSpacing(0)
         
-        main_layout.addWidget(content_widget, 1)
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
 
         header_frame = QFrame()
         header_frame.setObjectName("headerFrame")
+        header_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         header_layout = QVBoxLayout(header_frame)
-        header_layout.setContentsMargins(0, 40, 0, 40)
-        header_layout.setSpacing(20)
+        header_layout.setContentsMargins(0, 30, 0, 30)
+        header_layout.setSpacing(15)
 
         self.welcome_label = QLabel("Welcome to")
         self.welcome_label.setObjectName("welcomeText")
         self.welcome_label.setAlignment(Qt.AlignCenter)
-        font = QFont("Segoe UI", 36, QFont.Light)
+        self.welcome_label.setWordWrap(True)
+        font = QFont("Segoe UI", 32, QFont.Light)
         self.welcome_label.setFont(font)
         header_layout.addWidget(self.welcome_label)
 
         self.brand = QLabel("WinLink")
         self.brand.setObjectName("brandName")
         self.brand.setAlignment(Qt.AlignCenter)
-        brand_font = QFont("Segoe UI", 72, QFont.Black)
+        self.brand.setWordWrap(True)
+        brand_font = QFont("Segoe UI", 64, QFont.Black)
         self.brand.setFont(brand_font)
         header_layout.addWidget(self.brand)
 
         self.subtitle = QLabel("Enterprise-Grade Distributed Computing Platform")
         self.subtitle.setObjectName("platformSubtitle")
         self.subtitle.setAlignment(Qt.AlignCenter)
-        subtitle_font = QFont("Segoe UI", 20, QFont.Medium)
+        self.subtitle.setWordWrap(True)
+        subtitle_font = QFont("Segoe UI", 18, QFont.Medium)
         self.subtitle.setFont(subtitle_font)
         header_layout.addWidget(self.subtitle)
 
@@ -71,19 +105,21 @@ class WelcomeScreen(QWidget):
 
         features_frame = QFrame()
         features_frame.setObjectName("featuresFrame")
+        features_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         features_layout = QVBoxLayout(features_frame)
-        features_layout.setContentsMargins(40, 30, 40, 30)
-        features_layout.setSpacing(25)
+        features_layout.setContentsMargins(20, 25, 20, 25)
+        features_layout.setSpacing(20)
 
         features_title = QLabel("Key Features")
         features_title.setObjectName("featuresTitle")
         features_title.setAlignment(Qt.AlignCenter)
-        features_title_font = QFont("Segoe UI", 24, QFont.DemiBold)
+        features_title.setWordWrap(True)
+        features_title_font = QFont("Segoe UI", 22, QFont.DemiBold)
         features_title.setFont(features_title_font)
         features_layout.addWidget(features_title)
 
         cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(30)
+        cards_layout.setSpacing(20)
 
         feature_data = [
             ("🌐", "Distributed Computing", "Connect multiple PCs across your network"),
@@ -104,16 +140,19 @@ class WelcomeScreen(QWidget):
 
         action_frame = QFrame()
         action_frame.setObjectName("actionFrame")
+        action_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         action_layout = QVBoxLayout(action_frame)
-        action_layout.setContentsMargins(0, 30, 0, 40)
-        action_layout.setSpacing(20)
+        action_layout.setContentsMargins(0, 25, 0, 30)
+        action_layout.setSpacing(15)
 
         self.get_started_btn = QPushButton("Get Started")
         self.get_started_btn.setObjectName("getStartedBtn")
-        self.get_started_btn.setFixedSize(320, 80)
+        self.get_started_btn.setMinimumSize(280, 70)
+        self.get_started_btn.setMaximumSize(350, 85)
+        self.get_started_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.get_started_btn.clicked.connect(self.open_role_screen)
         
-        btn_font = QFont("Segoe UI", 18, QFont.Bold)
+        btn_font = QFont("Segoe UI", 16, QFont.Bold)
         self.get_started_btn.setFont(btn_font)
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(30)
@@ -210,17 +249,19 @@ class WelcomeScreen(QWidget):
     def _create_feature_card(self, icon, title, description):
         card = QFrame()
         card.setObjectName("featureCard")
-        card.setFixedSize(250, 160)
+        card.setMinimumSize(200, 140)
+        card.setMaximumSize(280, 180)
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(20, 25, 20, 25)
-        layout.setSpacing(12)
+        layout.setContentsMargins(15, 20, 15, 20)
+        layout.setSpacing(10)
         layout.setAlignment(Qt.AlignTop)
 
         icon_label = QLabel(icon)
         icon_label.setObjectName("featureIcon")
         icon_label.setAlignment(Qt.AlignCenter)
-        icon_font = QFont("Segoe UI Emoji", 32)
+        icon_font = QFont("Segoe UI Emoji", 28)
         icon_label.setFont(icon_font)
         layout.addWidget(icon_label)
 
@@ -228,7 +269,7 @@ class WelcomeScreen(QWidget):
         title_label.setObjectName("featureTitle")
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setWordWrap(True)
-        title_font = QFont("Segoe UI", 14, QFont.Bold)
+        title_font = QFont("Segoe UI", 13, QFont.Bold)
         title_label.setFont(title_font)
         layout.addWidget(title_label)
 
@@ -236,7 +277,7 @@ class WelcomeScreen(QWidget):
         desc_label.setObjectName("featureDesc")
         desc_label.setAlignment(Qt.AlignCenter)
         desc_label.setWordWrap(True)
-        desc_font = QFont("Segoe UI", 11, QFont.Normal)
+        desc_font = QFont("Segoe UI", 10, QFont.Normal)
         desc_label.setFont(desc_font)
         layout.addWidget(desc_label)
 
@@ -319,4 +360,5 @@ if __name__ == "__main__":
         app.setWindowIcon(QIcon(icon_path))
     
     win = WelcomeScreen()
+    win.showMaximized()
     sys.exit(app.exec_())

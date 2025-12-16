@@ -3,6 +3,7 @@ Network Protocol - Handles communication between Master and Worker PCs
 """
 import json
 import socket
+import struct
 import threading
 import time
 from typing import Dict, Any, Callable, Optional
@@ -58,6 +59,10 @@ class MasterNetwork:
         self.lock = threading.Lock()
         self.discovery_socket: Optional[socket.socket] = None
         self.discovery_port = 5000  # Port for UDP discovery
+        self.round_robin_index = 0  # For round-robin task distribution
+        self.worker_task_counts: Dict[str, int] = {}  # Track task count per worker
+        self.worker_latencies: Dict[str, float] = {}  # Track network latency to workers
+        
     def broadcast_task(self, task_id: str, code: str, data: Dict[str, Any]):
         """Send the task to all connected workers"""
         task_data = {
@@ -282,6 +287,105 @@ class MasterNetwork:
             return {wid: info.copy() for wid, info in self.worker_info.items() 
                    if info['status'] == 'connected'}
     
+    def select_best_worker(self, task_type: str = None, strategy: str = "intelligent") -> Optional[str]:
+        """
+        Select the best worker for a task based on strategy
+        
+        Args:
+            task_type: Type of task (for capability matching)
+            strategy: Selection strategy - "intelligent", "round_robin", "least_busy", "fastest"
+            
+        Returns:
+            worker_id or None if no workers available
+        """
+        connected_workers = self.get_connected_workers()
+        
+        if not connected_workers:
+            return None
+        
+        # Strategy: Round-robin
+        if strategy == "round_robin":
+            worker_ids = list(connected_workers.keys())
+            selected = worker_ids[self.round_robin_index % len(worker_ids)]
+            self.round_robin_index += 1
+            return selected
+        
+        # Strategy: Least busy (lowest task count)
+        elif strategy == "least_busy":
+            return min(connected_workers.keys(), 
+                      key=lambda w: self.worker_task_counts.get(w, 0))
+        
+        # Strategy: Fastest (lowest latency)
+        elif strategy == "fastest":
+            workers_with_latency = {w: self.worker_latencies.get(w, 999) 
+                                   for w in connected_workers.keys()}
+            return min(workers_with_latency, key=workers_with_latency.get)
+        
+        # Strategy: Intelligent (considers load, latency, and capabilities)
+        else:  # "intelligent"
+            best_worker = None
+            best_score = -1
+            
+            for worker_id, info in connected_workers.items():
+                resources = info.get('resources', {})
+                
+                # Check capability matching for ML tasks
+                if task_type == "machine_learning":
+                    if not resources.get('has_gpu', False):
+                        continue  # Skip workers without GPU for ML tasks
+                
+                # Calculate score (higher is better)
+                cpu_available = 100 - resources.get('cpu_percent', 50)
+                mem_available = 100 - resources.get('memory_percent', 50)
+                latency_score = 100 - min(self.worker_latencies.get(worker_id, 100), 100)
+                load_score = 100 - (self.worker_task_counts.get(worker_id, 0) * 10)
+                
+                # Weighted scoring
+                score = (
+                    cpu_available * 0.3 +
+                    mem_available * 0.2 +
+                    latency_score * 0.3 +
+                    load_score * 0.2
+                )
+                
+                # Bonus for GPU capability on ML tasks
+                if task_type == "machine_learning" and resources.get('has_gpu'):
+                    score += 20
+                
+                if score > best_score:
+                    best_score = score
+                    best_worker = worker_id
+            
+            return best_worker or list(connected_workers.keys())[0]
+    
+    def update_worker_resources(self, worker_id: str, resources: Dict):
+        """Update worker resource information"""
+        with self.lock:
+            if worker_id in self.worker_info:
+                self.worker_info[worker_id]['resources'] = resources
+    
+    def measure_worker_latency(self, worker_id: str):
+        """Measure network latency to a worker using ping"""
+        try:
+            start = time.time()
+            # Send a lightweight heartbeat and measure response time
+            msg = NetworkMessage(MessageType.HEARTBEAT, {"timestamp": start})
+            self.send_message_to_worker(worker_id, msg)
+            # Latency will be calculated when response arrives
+        except Exception:
+            self.worker_latencies[worker_id] = 999  # High latency on error
+    
+    def increment_task_count(self, worker_id: str):
+        """Increment active task count for a worker"""
+        with self.lock:
+            self.worker_task_counts[worker_id] = self.worker_task_counts.get(worker_id, 0) + 1
+    
+    def decrement_task_count(self, worker_id: str):
+        """Decrement active task count for a worker"""
+        with self.lock:
+            if worker_id in self.worker_task_counts:
+                self.worker_task_counts[worker_id] = max(0, self.worker_task_counts[worker_id] - 1)
+    
     def start(self):
         """Start the network manager"""
         self.running = True
@@ -382,14 +486,19 @@ class WorkerNetwork:
                 self.port = port
                 
                 self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                
+                # Enable address reuse - critical for switching roles
                 self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 
-                # Windows-specific socket options for better port reuse
-                try:
-                    # SO_EXCLUSIVEADDRUSE = 0 allows immediate port reuse
-                    self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 0)
-                except (AttributeError, OSError):
-                    pass  # Not on Windows or not supported
+                # Windows-specific: Force port reuse even if in TIME_WAIT state
+                if hasattr(socket, 'SO_REUSEPORT'):
+                    try:
+                        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                    except (AttributeError, OSError):
+                        pass
+                
+                # Set linger to 0 for immediate port release on close
+                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 
                 # Set socket to non-blocking for better control
                 self.server_socket.settimeout(1.0)
@@ -404,8 +513,8 @@ class WorkerNetwork:
                 print(f"[WORKER] 📡 Master should connect to: {self.ip}:{port}")
                 print(f"[WORKER] ")
                 print(f"[WORKER] 🛡️  IMPORTANT - Firewall Configuration:")
-                print(f"[WORKER]   If Master cannot connect, run this as Administrator:")
-                print(f"[WORKER]   netsh advfirewall firewall add rule name=\"WinLink\" dir=in action=allow protocol=TCP localport={port} enable=yes")
+                print(f"[WORKER]   Run setup_firewall.bat as Administrator on BOTH PCs")
+                print(f"[WORKER]   If switching roles, run cleanup_ports.bat first")
                 print(f"[WORKER] ")
                 print(f"[WORKER] Ready to accept connections from Master PC")
                 

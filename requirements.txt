@@ -1,6 +1,12 @@
-# Requirements
+# Core Requirements (Required)
 PyQt5>=5.15.0
 psutil>=5.8.0
+matplotlib>=3.5.0
+
+# Video Playback Support (Optional - only needed for VIDEO_PLAYBACK task type)
+# Install VLC Media Player first from: https://www.videolan.org/vlc/
+# Then install: pip install python-vlc
+# python-vlc>=3.0.0
 
 # Container and Security Support (Optional - for Docker Desktop)
 docker>=6.0.0

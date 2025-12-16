@@ -1,0 +1,208 @@
+.download {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, transparent 100%);
+}
+
+.download-content {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 32px;
+  margin-bottom: 60px;
+}
+
+.download-main {
+  padding: 48px;
+}
+
+.download-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.download-header h3 {
+  font-size: 28px;
+  color: var(--text-primary);
+}
+
+.version-badge {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #4fc3f7 0%, #9c27b0 100%);
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.download-description {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+}
+
+.download-buttons {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+
+.download-btn {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.file-size {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.quick-start h4 {
+  font-size: 18px;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.command-block {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.command-block code {
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: #4fc3f7;
+  font-size: 14px;
+}
+
+.requirements-panel {
+  padding: 32px;
+}
+
+.requirements-panel h4 {
+  font-size: 20px;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+}
+
+.optional-header {
+  margin-top: 24px;
+}
+
+.requirements-list {
+  list-style: none;
+}
+
+.requirements-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.req-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.req-icon.check {
+  color: #66bb6a;
+}
+
+.req-icon.optional {
+  color: #4fc3f7;
+}
+
+.help-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.help-section h4 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.help-section p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.help-link {
+  color: #4fc3f7;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.help-link:hover {
+  color: #9c27b0;
+}
+
+.features-highlight {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 24px;
+}
+
+.highlight-item {
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.highlight-item h4 {
+  font-size: 16px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.highlight-item p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+@media (max-width: 968px) {
+  .download-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .download-main {
+    padding: 32px 24px;
+  }
+
+  .download-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .download-buttons {
+    flex-direction: column;
+  }
+
+  .download-buttons .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .command-block code {
+    font-size: 12px;
+  }
+}

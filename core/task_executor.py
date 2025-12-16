@@ -15,6 +15,12 @@ class TaskExecutor:
     def __init__(self):
         self.max_execution_time = 300  # 5 minutes max
         self.max_memory_mb = 512  # 512MB max memory per task
+        self.max_cpu_percent = 100  # 100% CPU max (no limit by default)
+    
+    def set_resource_limits(self, cpu_percent: int = 100, memory_mb: int = 512):
+        """Set CPU and memory limits for task execution"""
+        self.max_cpu_percent = max(10, min(100, cpu_percent))  # Clamp between 10-100
+        self.max_memory_mb = max(256, min(8192, memory_mb))  # Clamp between 256-8192
     
     def execute_task(
         self,
@@ -83,28 +89,87 @@ class TaskExecutor:
                 pass
         
         try:
-            # Execute with timeout and memory monitoring
-            execution_thread = threading.Thread(
-                target=self._execute_with_monitoring,
-                args=(task_code, task_namespace, stdout_capture, stderr_capture)
-            )
-            execution_thread.daemon = True
-            execution_thread.start()
-            execution_thread.join(timeout=self.max_execution_time)
+            # Get current process for resource limiting
+            import os
+            current_process = psutil.Process(os.getpid())
             
-            if execution_thread.is_alive():
+            # Set process priority based on CPU limit
+            if self.max_cpu_percent <= 50:
+                # Low CPU limit - use BELOW_NORMAL priority
+                try:
+                    current_process.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+                except:
+                    pass
+            elif self.max_cpu_percent <= 75:
+                # Medium CPU limit - use NORMAL priority  
+                try:
+                    current_process.nice(psutil.NORMAL_PRIORITY_CLASS)
+                except:
+                    pass
+            # else: HIGH_PRIORITY_CLASS (default)
+            
+            # Start CPU throttling thread if limit is set
+            stop_throttle = threading.Event()
+            throttle_thread = None
+            memory_exceeded = [False]  # Use list to allow modification in nested function
+            
+            if self.max_cpu_percent < 100 or self.max_memory_mb < 8192:
+                def resource_monitor():
+                    \"\"\"Monitor and throttle CPU and memory usage\"\"\"
+                    while not stop_throttle.is_set():
+                        try:
+                            # Monitor CPU usage
+                            if self.max_cpu_percent < 100:
+                                cpu_usage = current_process.cpu_percent(interval=0.1)
+                                
+                                # If over limit, sleep to reduce CPU usage
+                                if cpu_usage > self.max_cpu_percent:
+                                    overage = (cpu_usage - self.max_cpu_percent) / 100
+                                    time.sleep(0.01 * overage)
+                            
+                            # Monitor memory usage
+                            if self.max_memory_mb < 8192:
+                                memory_mb = self._get_memory_usage()
+                                if memory_mb > self.max_memory_mb:
+                                    memory_exceeded[0] = True
+                                    stop_throttle.set()
+                                    break
+                            
+                            time.sleep(0.05)  # Check every 50ms
+                        except:
+                            break
+                
+                throttle_thread = threading.Thread(target=resource_monitor, daemon=True)
+                throttle_thread.start()
+            
+            # Execute the task
+            with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                exec(task_code, task_namespace)
+            
+            # Stop resource monitoring
+            if throttle_thread:
+                stop_throttle.set()
+                throttle_thread.join(timeout=1)
+            
+            # Check if memory limit was exceeded
+            if memory_exceeded[0]:
                 return {
                     'success': False,
                     'result': None,
-                    'error': f'Task execution timeout ({self.max_execution_time}s)',
+                    'error': f'Task exceeded memory limit of {self.max_memory_mb} MB',
                     'execution_time': time.time() - start_time,
                     'memory_used': self._get_memory_usage() - start_memory,
                     'stdout': stdout_capture.getvalue(),
                     'stderr': stderr_capture.getvalue()
                 }
             
+            # Restore normal priority
+            try:
+                current_process.nice(psutil.NORMAL_PRIORITY_CLASS)
+            except:
+                pass
+            
             # Check if execution had an error
-            # Only treat as error if result is None and there's stderr content
             stderr_content = stderr_capture.getvalue()
             result_value = task_namespace.get('result')
             
@@ -159,10 +224,11 @@ class TaskExecutor:
             return 0
     
     def get_system_resources(self):
-        """Return snapshot of current system resources"""
+        """Return snapshot of current system resources with capabilities"""
         try:
             import os
             import platform
+            import socket
             
             battery = psutil.sensors_battery()
             mem = psutil.virtual_memory()
@@ -176,6 +242,26 @@ class TaskExecutor:
             
             disk = psutil.disk_usage(disk_path)
             
+            # Detect GPU capability
+            has_gpu = False
+            gpu_info = "No GPU detected"
+            try:
+                import subprocess
+                result = subprocess.run(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], 
+                                      capture_output=True, text=True, timeout=2)
+                if result.returncode == 0 and result.stdout.strip():
+                    has_gpu = True
+                    gpu_info = result.stdout.strip()
+            except:
+                pass
+            
+            # Get CPU info
+            cpu_count = psutil.cpu_count(logical=False) or psutil.cpu_count()
+            cpu_threads = psutil.cpu_count(logical=True)
+            
+            # Get hostname for geographic awareness
+            hostname = socket.gethostname()
+            
             resources = {
                 "cpu_percent": psutil.cpu_percent(interval=0.2),
                 "memory_percent": mem.percent,
@@ -185,6 +271,14 @@ class TaskExecutor:
                 "disk_free_gb": disk.free / (1024 ** 3),
                 "battery_percent": battery.percent if battery else None,
                 "battery_plugged": battery.power_plugged if battery else None,
+                # Capability detection
+                "has_gpu": has_gpu,
+                "gpu_info": gpu_info,
+                "cpu_cores": cpu_count,
+                "cpu_threads": cpu_threads,
+                "hostname": hostname,
+                "platform": platform.system(),
+                "platform_version": platform.version(),
             }
             
             return resources
