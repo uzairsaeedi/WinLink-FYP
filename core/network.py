@@ -188,6 +188,7 @@ class MasterNetwork:
     
     def disconnect_worker(self, worker_id: str):
         """Disconnect from a worker"""
+        print(f"[MASTER NETWORK] disconnect_worker called for {worker_id}")
         # Best-effort: send DISCONNECT, shutdown and close socket, then ensure cleanup
         sock = None
         with self.lock:

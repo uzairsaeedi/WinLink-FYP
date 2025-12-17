@@ -690,12 +690,73 @@ class MasterUI(QtWidgets.QWidget):
         self.workers_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.workers_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.workers_list.setFocusPolicy(QtCore.Qt.StrongFocus)
-        
-        self.disconnect_btn = QtWidgets.QPushButton("Disconnect")
+
+        # Create Disconnect tool button (with menu) before connecting signals
+        self.disconnect_btn = QtWidgets.QToolButton()
+        self.disconnect_btn.setText("Disconnect")
         self.disconnect_btn.setObjectName("stopBtn")
         self.disconnect_btn.setEnabled(False)
         self.disconnect_btn.setMinimumHeight(36)
-        self.disconnect_btn.clicked.connect(self.disconnect_selected_worker)
+        # Create menu for disconnect actions: selected or all
+        try:
+            menu = QtWidgets.QMenu(self)
+            act_selected = menu.addAction("Disconnect Selected")
+            act_all = menu.addAction("Disconnect All")
+            act_selected.triggered.connect(self.disconnect_selected_worker)
+            act_all.triggered.connect(self.disconnect_all_workers)
+            self.disconnect_btn.setMenu(menu)
+            self.disconnect_btn.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
+            # clicking main button invokes selected disconnect
+            self.disconnect_btn.clicked.connect(self.disconnect_selected_worker)
+        except Exception:
+            # Fallback to simple button if menu creation fails
+            try:
+                self.disconnect_btn.clicked.connect(self.disconnect_selected_worker)
+            except Exception:
+                pass
+
+        # Make the tool button visually match the original stop QPushButton
+        try:
+            self.disconnect_btn.setStyleSheet("""
+                QToolButton#stopBtn {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                               stop:0 #ff6b6b, stop:1 #ff4444);
+                    color: white;
+                    font-size: 15px;
+                    font-weight: 600;
+                    padding: 10px 20px;
+                    border-radius: 10px;
+                }
+                QToolButton#stopBtn:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                               stop:0 #ff8a80, stop:1 #ff6b6b);
+                }
+            """)
+        except Exception:
+            pass
+
+        # Ensure clicking/pressing/selecting an item enables the disconnect button immediately
+        try:
+            self.workers_list.itemClicked.connect(lambda it: self.disconnect_btn.setEnabled(True))
+            self.workers_list.itemPressed.connect(lambda it: self.disconnect_btn.setEnabled(True))
+            self.workers_list.clicked.connect(lambda idx: self.disconnect_btn.setEnabled(True))
+            self.workers_list.currentItemChanged.connect(lambda cur, prev: self.disconnect_btn.setEnabled(cur is not None))
+        except Exception:
+            pass
+
+        # Provide a right-click context menu on the workers list so the user can
+        # disconnect even if the button is unresponsive for some reason.
+        try:
+            self.workers_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+            self.workers_list.customContextMenuRequested.connect(self.show_worker_context_menu)
+        except Exception:
+            pass
+
+        # Add a keyboard shortcut (Ctrl+D) to trigger disconnect for quick testing
+        try:
+            QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+D"), self).activated.connect(self.disconnect_selected_worker)
+        except Exception:
+            pass
         
         self.refresh_workers_btn = QtWidgets.QPushButton("Refresh")
         self.refresh_workers_btn.setMinimumHeight(36)
@@ -1501,7 +1562,16 @@ class MasterUI(QtWidgets.QWidget):
         threading.Thread(target=monitor, daemon=True).start()
 
     def on_worker_selection_changed(self):
-        self.disconnect_btn.setEnabled(bool(self.workers_list.selectedItems()))
+        # Enable disconnect if an item is selected OR there are any connected workers (allow Disconnect All)
+        try:
+            has_selection = self.workers_list.currentItem() is not None
+            has_any = len(self.network.get_connected_workers()) > 0
+            self.disconnect_btn.setEnabled(has_selection or has_any)
+        except Exception:
+            try:
+                self.disconnect_btn.setEnabled(self.workers_list.currentItem() is not None)
+            except Exception:
+                pass
     
     def refresh_discovered_workers(self):
         """Update the dropdown with newly discovered workers"""
@@ -1896,7 +1966,13 @@ class MasterUI(QtWidgets.QWidget):
         self.on_worker_selection_changed()
 
     def disconnect_selected_worker(self):
+        print("[MASTER UI] disconnect_selected_worker called")
         sel = self.workers_list.currentItem()
+        print(f"[MASTER UI] currentItem: {sel}")
+        try:
+            self.status_indicator.setText("● Disconnecting...")
+        except Exception:
+            pass
         if not sel:
             QtWidgets.QMessageBox.warning(self, "No Selection", "Please select a worker to disconnect")
             return
@@ -1931,6 +2007,7 @@ class MasterUI(QtWidgets.QWidget):
         if reply == QtWidgets.QMessageBox.Yes:
             try:
                 # Perform network disconnect
+                print(f"[MASTER UI] Calling network.disconnect_worker({worker_id})")
                 self.network.disconnect_worker(worker_id)
                 print(f"[MASTER] 🔌 Disconnected from worker: {ip_port} (worker_id={worker_id})")
 
@@ -1956,6 +2033,64 @@ class MasterUI(QtWidgets.QWidget):
             except Exception as e:
                 QtWidgets.QMessageBox.critical(self, "Error", f"Failed to disconnect: {str(e)}")
                 print(f"[MASTER] ❌ Error disconnecting: {e}")
+
+    def show_worker_context_menu(self, pos):
+        """Show context menu for a worker list item (right-click)."""
+        try:
+            item = self.workers_list.itemAt(pos)
+            menu = QtWidgets.QMenu(self)
+            disconnect_action = menu.addAction("Disconnect")
+            disconnect_action.setEnabled(item is not None)
+            chosen = menu.exec_(self.workers_list.mapToGlobal(pos))
+            if chosen == disconnect_action:
+                if item:
+                    # ensure selection follows the right-click target
+                    self.workers_list.setCurrentItem(item)
+                self.disconnect_selected_worker()
+        except Exception:
+            pass
+
+    def disconnect_all_workers(self):
+        """Disconnect from all connected workers and notify them."""
+        workers = self.network.get_connected_workers()
+        if not workers:
+            QtWidgets.QMessageBox.information(self, "No Workers", "There are no connected workers to disconnect.")
+            return
+
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Confirm Disconnect All",
+            f"Disconnect from ALL connected workers ({len(workers)})?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No
+        )
+        if reply != QtWidgets.QMessageBox.Yes:
+            return
+
+        # Iterate over a snapshot of worker ids to avoid mutation during iteration
+        worker_ids = list(workers.keys())
+        for wid in worker_ids:
+            try:
+                print(f"[MASTER UI] disconnect_all_workers calling network.disconnect_worker({wid})")
+                self.network.disconnect_worker(wid)
+            except Exception as e:
+                print(f"[MASTER UI] Error disconnecting {wid}: {e}")
+            try:
+                with self.worker_resources_lock:
+                    self.worker_resources.pop(wid, None)
+            except Exception:
+                pass
+            try:
+                self.task_manager.requeue_tasks_for_worker(wid)
+            except Exception:
+                pass
+
+        QtCore.QTimer.singleShot(100, self.refresh_workers)
+        self.refresh_workers_async()
+        self.refresh_discovered_workers()
+        self.update_resource_display()
+        self.refresh_task_table_async()
+        QtWidgets.QMessageBox.information(self, "Disconnected", f"Disconnected from {len(worker_ids)} workers")
 
     def on_task_type_changed(self):
         """Update template dropdown based on selected task type"""

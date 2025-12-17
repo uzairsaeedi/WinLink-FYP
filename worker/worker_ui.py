@@ -43,6 +43,7 @@ class WorkerUI(QWidget):
     task_request_signal = pyqtSignal(dict)
     resource_request_signal = pyqtSignal(dict)
     heartbeat_signal = pyqtSignal(dict)
+    disconnect_signal = pyqtSignal()
     master_connected_signal = pyqtSignal(tuple)
     def __init__(self):
         super().__init__()
@@ -90,6 +91,13 @@ class WorkerUI(QWidget):
         self.network.register_handler(MessageType.HEARTBEAT, lambda data: self.heartbeat_signal.emit(data))
         self.heartbeat_signal.connect(self.handle_heartbeat)
 
+        # Handle explicit disconnect notifications from Master
+        try:
+            self.network.register_handler(MessageType.DISCONNECT, lambda data: self.disconnect_signal.emit())
+            self.disconnect_signal.connect(self.handle_master_disconnect)
+        except Exception:
+            pass
+
         # Connection callback: emit signal to main thread
         self.network.set_connection_callback(lambda addr: self.master_connected_signal.emit(addr))
         self.master_connected_signal.connect(self.handle_master_connected)
@@ -113,6 +121,18 @@ class WorkerUI(QWidget):
         self.log(f"   ⏱️  Connected at: {connect_time}")
         self.log(f"   ✓ Worker ready to receive tasks")
         self.log("─" * 60)
+
+    def handle_master_disconnect(self):
+        """Handle an explicit disconnect message from Master: log and stop networking."""
+        try:
+            self.log("⚠️ Received DISCONNECT from Master. Closing connection.")
+        except Exception:
+            pass
+        try:
+            # Ensure network stops and sockets close
+            self.network.stop()
+        except Exception:
+            pass
 
     def handle_resource_request(self, data):
         try:
