@@ -397,6 +397,27 @@ class MasterNetwork:
         """Start the network manager"""
         self.running = True
         self._start_discovery_listener()
+        # Start active discovery probe sender to improve discovery reliability
+        threading.Thread(target=self._start_discovery_probe_sender, daemon=True).start()
+
+    def _start_discovery_probe_sender(self):
+        """Periodically broadcast a lightweight probe so workers can reply if broadcasts are unreliable."""
+        try:
+            probe_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            except Exception:
+                pass
+            probe_sock.settimeout(1.0)
+            probe_msg = json.dumps({'type': 'master_probe', 'data': {'timestamp': time.time()}}).encode()
+            while self.running:
+                try:
+                    probe_sock.sendto(probe_msg, ('<broadcast>', self.discovery_port))
+                except Exception:
+                    pass
+                time.sleep(3)
+        except Exception:
+            pass
     
     def _start_discovery_listener(self):
         """Start UDP listener for worker discovery broadcasts"""
@@ -421,9 +442,16 @@ class MasterNetwork:
                 while self.running:
                     try:
                         data, addr = self.discovery_socket.recvfrom(1024)
-                        message = json.loads(data.decode())
+                        # Accept raw JSON as well as simple probes
+                        raw = data.decode(errors='ignore')
+                        try:
+                            message = json.loads(raw)
+                        except Exception:
+                            message = {'type': 'raw', 'data': raw}
                         
-                        if message.get('type') == MessageType.WORKER_DISCOVERY:
+                        # Handle worker discovery broadcasts and probe replies
+                        mtype = message.get('type')
+                        if mtype == MessageType.WORKER_DISCOVERY:
                             worker_data = message.get('data', {})
                             worker_id = f"{worker_data.get('ip')}:{worker_data.get('port')}"
                             
@@ -435,6 +463,22 @@ class MasterNetwork:
                                     'last_seen': time.time()
                                 }
                             print(f"[MASTER] Discovered worker: {worker_id} ({worker_data.get('hostname')})")
+                        elif mtype == 'worker_probe_reply' or mtype == 'worker_discovery_reply':
+                            # backward-compatible: accept probe replies
+                            worker_data = message.get('data', {})
+                            worker_id = f"{worker_data.get('ip')}:{worker_data.get('port')}"
+                            with self.lock:
+                                self.discovered_workers[worker_id] = {
+                                    'hostname': worker_data.get('hostname'),
+                                    'ip': worker_data.get('ip'),
+                                    'port': worker_data.get('port'),
+                                    'last_seen': time.time()
+                                }
+                            if self.verbose:
+                                print(f"[MASTER] Probe-reply discovered worker: {worker_id} ({worker_data.get('hostname')})")
+                        elif mtype == 'master_probe':
+                            # ignore probe echoes
+                            pass
                     
                     except socket.timeout:
                         # Clean up stale workers (not seen in last 15 seconds)
@@ -608,6 +652,53 @@ class WorkerNetwork:
                 print(f"[WORKER] Failed to start broadcast: {e}")
         
         threading.Thread(target=broadcast, daemon=True).start()
+        # Also start a probe listener so masters can actively probe and get a unicast reply
+        threading.Thread(target=self._start_probe_listener, daemon=True).start()
+
+    def _start_probe_listener(self):
+        """Listen for master probes and reply with a unicast discovery message"""
+        try:
+            probe_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            except Exception:
+                pass
+            try:
+                probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            except Exception:
+                pass
+            probe_sock.bind(('0.0.0.0', self.discovery_port))
+            probe_sock.settimeout(1.0)
+            while self.running:
+                try:
+                    data, addr = probe_sock.recvfrom(1024)
+                    raw = data.decode(errors='ignore')
+                    try:
+                        msg = json.loads(raw)
+                    except Exception:
+                        msg = {'type': 'raw', 'data': raw}
+
+                    mtype = msg.get('type')
+                    if mtype == 'master_probe' or mtype == 'probe':
+                        # Reply directly to sender with discovery info
+                        reply = json.dumps({
+                            'type': 'worker_probe_reply',
+                            'data': {
+                                'hostname': self.hostname,
+                                'ip': self.ip,
+                                'port': self.port
+                            }
+                        }).encode()
+                        try:
+                            probe_sock.sendto(reply, addr)
+                        except Exception:
+                            pass
+                except socket.timeout:
+                    continue
+                except Exception:
+                    break
+        except Exception:
+            pass
     
     def _accept_connections(self):
         """Accept connections from master"""

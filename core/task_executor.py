@@ -87,6 +87,21 @@ class TaskExecutor:
                 task_namespace[module] = __import__(module)
             except ImportError:
                 pass
+        # Provide a restricted __import__ to allow 'import' in task code for safe modules only
+        try:
+            import builtins as _builtins
+            real_import = _builtins.__import__
+
+            def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+                # Only allow importing whitelisted safe modules
+                if name in safe_modules:
+                    return real_import(name, globals, locals, fromlist, level)
+                raise ImportError(f"Import of module '{name}' is not allowed in task environment")
+
+            # Inject safe __import__ into builtins used by task
+            task_namespace['__builtins__']['__import__'] = _safe_import
+        except Exception:
+            pass
         
         try:
             # Get current process for resource limiting
@@ -143,8 +158,28 @@ class TaskExecutor:
                 throttle_thread.start()
             
             # Execute the task
-            with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-                exec(task_code, task_namespace)
+            try:
+                with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                    exec(task_code, task_namespace)
+            except Exception as e:
+                # If exec failed due to missing __import__, retry once with a fuller __import__ available
+                msg = str(e)
+                if "__import__" in msg or "__import__ not found" in msg:
+                    try:
+                        # Provide the real import as a fallback to improve compatibility
+                        try:
+                            import builtins as _builtins
+                            task_namespace['__builtins__']['__import__'] = _builtins.__import__
+                        except Exception:
+                            pass
+                        # Retry execution once
+                        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                            exec(task_code, task_namespace)
+                    except Exception:
+                        # Re-raise original exception handling below
+                        pass
+                else:
+                    raise
             
             # Stop resource monitoring
             if throttle_thread:

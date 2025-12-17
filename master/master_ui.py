@@ -792,9 +792,9 @@ class MasterUI(QtWidgets.QWidget):
         """)
         create_layout.addWidget(self.task_description)
 
-        # Code and Data editors
+        # Code and Data editors (increased height and font for readability)
         self.task_code_edit = QtWidgets.QTextEdit()
-        self.task_code_edit.setMaximumHeight(100)
+        self.task_code_edit.setMaximumHeight(260)
         self.task_code_edit.setPlaceholderText("Task code will appear here...")
         self.task_code_edit.setStyleSheet("""
             QTextEdit {
@@ -802,18 +802,26 @@ class MasterUI(QtWidgets.QWidget):
                 color: #f0f0f0;
                 border: 2px solid rgba(100, 255, 160, 0.3);
                 border-radius: 6px;
-                padding: 8px;
-                font-size: 9pt;
+                padding: 10px;
+                font-size: 11pt;
                 font-family: 'Consolas';
             }
         """)
+        code_font = self.task_code_edit.font()
+        code_font.setPointSize(11)
+        code_font.setFamily('Consolas')
+        self.task_code_edit.setFont(code_font)
         create_layout.addWidget(QtWidgets.QLabel("Code:"))
         create_layout.addWidget(self.task_code_edit)
 
         self.task_data_edit = QtWidgets.QTextEdit()
-        self.task_data_edit.setMaximumHeight(80)
+        self.task_data_edit.setMaximumHeight(180)
         self.task_data_edit.setPlaceholderText("Task data (JSON)...")
         self.task_data_edit.setStyleSheet(self.task_code_edit.styleSheet())
+        data_font = self.task_data_edit.font()
+        data_font.setPointSize(11)
+        data_font.setFamily('Consolas')
+        self.task_data_edit.setFont(data_font)
         create_layout.addWidget(QtWidgets.QLabel("Data:"))
         create_layout.addWidget(self.task_data_edit)
 
@@ -867,14 +875,14 @@ class MasterUI(QtWidgets.QWidget):
         queue_layout = QtWidgets.QVBoxLayout(queue_section)
         queue_layout.setSpacing(10)
 
-        # Task table
-        self.tasks_table = QtWidgets.QTableWidget(0, 6)
-        self.tasks_table.setHorizontalHeaderLabels(["ID", "Type", "Status", "Worker", "Progress", "Result"])
+        # Task table (includes Output column)
+        self.tasks_table = QtWidgets.QTableWidget(0, 7)
+        self.tasks_table.setHorizontalHeaderLabels(["ID", "Type", "Status", "Worker", "Progress", "Result", "Output"])
         self.tasks_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.tasks_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.tasks_table.setAlternatingRowColors(True)
         self.tasks_table.verticalHeader().setVisible(False)
-        self.tasks_table.setMinimumHeight(300)
+        self.tasks_table.setMinimumHeight(420)
         self.tasks_table.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         
         # Set column widths
@@ -884,7 +892,8 @@ class MasterUI(QtWidgets.QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.Stretch)
         
         self.tasks_table.setStyleSheet("""
             QTableWidget {
@@ -893,7 +902,7 @@ class MasterUI(QtWidgets.QWidget):
                 border: 2px solid rgba(100, 255, 160, 0.25);
                 border-radius: 6px;
                 gridline-color: rgba(255, 255, 255, 0.08);
-                font-size: 9pt;
+                font-size: 10.5pt;
             }
             QTableWidget::item {
                 padding: 8px;
@@ -907,6 +916,7 @@ class MasterUI(QtWidgets.QWidget):
                 padding: 10px;
                 border: none;
                 font-weight: bold;
+                font-size: 10pt;
             }
         """)
         queue_layout.addWidget(self.tasks_table)
@@ -2077,29 +2087,23 @@ class MasterUI(QtWidgets.QWidget):
             progress_widget.setAlignment(QtCore.Qt.AlignCenter)
             self.tasks_table.setCellWidget(row, 4, progress_widget)
 
+            # Create a concise but informative result preview (up to 300 chars)
             result_text = ""
             if t.result is not None:
-                if isinstance(t.result, dict):
-
-                    result_parts = []
-                    for key, val in list(t.result.items())[:3]:  # Show first 3 items
-                        if isinstance(val, (int, float)):
-                            result_parts.append(f"{key}: {val}")
-                        elif isinstance(val, str) and len(val) < 30:
-                            result_parts.append(f"{key}: {val}")
-                        else:
-                            result_parts.append(f"{key}: ...")
-                    result_text = ", ".join(result_parts)
-                    if len(t.result) > 3:
-                        result_text += f" (+{len(t.result)-3} more)"
-                elif isinstance(t.result, (list, tuple)):
-                    if len(t.result) <= 3:
-                        result_text = str(t.result)
+                try:
+                    if isinstance(t.result, (dict, list, tuple)):
+                        full = json.dumps(t.result, indent=2)
                     else:
-                        result_text = str(list(t.result)[:3]) + f" ... (+{len(t.result)-3} more)"
+                        full = str(t.result)
+                except Exception:
+                    full = str(t.result)
+
+                # Trim to reasonable preview length but keep words intact
+                preview_limit = 300
+                if len(full) > preview_limit:
+                    result_text = full[:preview_limit].rstrip() + "..."
                 else:
-                    result_str = str(t.result)
-                    result_text = result_str[:100] + ("..." if len(result_str) > 100 else "")
+                    result_text = full
             elif t.error:
                 result_text = f"Error: {t.error[:80]}"
             else:
@@ -2153,7 +2157,7 @@ class MasterUI(QtWidgets.QWidget):
                     pass
 
             lines = output_text.count('\n') + 1
-            estimated = max(40, min(300, lines * 18))
+            estimated = max(60, min(500, lines * 22))
             self.tasks_table.setRowHeight(row, estimated)
 
     def refresh_task_table_async(self):

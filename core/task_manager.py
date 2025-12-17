@@ -12,7 +12,6 @@ from typing import Dict, List, Any, Optional
 class TaskType(Enum):
     CUSTOM_TASK = "Custom Task"
     COMPUTATION = "Computation"
-    FILE_PROCESSING = "File Processing"
     IMAGE_PROCESSING = "Image Processing"
     DATA_ANALYSIS = "Data Analysis"
     VIDEO_PLAYBACK = "Video Playback"
@@ -153,6 +152,7 @@ class TaskManager:
             task.error = result_payload.get('error')
             task.progress = 100 if success else task.progress
             task.status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
+    
             
             # Store full output
             output_parts = []
@@ -373,76 +373,7 @@ result = analyze_data(data['numbers'])
         "sample_data": {"numbers": list(range(1, 10001))}
     },
     
-    "text_analysis": {
-        "type": TaskType.FILE_PROCESSING,
-        "name": "Text File Analysis",
-        "description": "Analyze text content and count words, lines, characters",
-        "code": """
-def analyze_text(text_content):
-    lines = text_content.split('\\n')
-    words = text_content.split()
-    return {
-        'line_count': len(lines),
-        'word_count': len(words),
-        'char_count': len(text_content),
-        'char_count_no_spaces': len(text_content.replace(' ', '')),
-        'avg_words_per_line': len(words) / len(lines) if lines else 0
-    }
-
-result = analyze_text(data['text'])
-""",
-        "sample_data": {"text": "This is a sample text.\\nIt has multiple lines.\\nEach line contains words."}
-    },
     
-    "csv_processing": {
-        "type": TaskType.FILE_PROCESSING,
-        "name": "CSV Data Processing",
-        "description": "Process CSV-like data and calculate statistics",
-        "code": """
-def process_csv_data(rows):
-    if not rows:
-        return {'error': 'No data provided'}
-    
-    # Assume first row is header
-    headers = rows[0] if rows else []
-    data_rows = rows[1:] if len(rows) > 1 else []
-    
-    result = {
-        'total_rows': len(data_rows),
-        'columns': len(headers),
-        'column_names': headers
-    }
-    
-    # Try to calculate numeric statistics for each column
-    if data_rows:
-        numeric_stats = {}
-        for col_idx in range(len(headers)):
-            try:
-                values = [float(row[col_idx]) for row in data_rows if col_idx < len(row)]
-                if values:
-                    numeric_stats[headers[col_idx]] = {
-                        'min': min(values),
-                        'max': max(values),
-                        'sum': sum(values),
-                        'avg': sum(values) / len(values)
-                    }
-            except:
-                pass
-        result['numeric_columns'] = numeric_stats
-    
-    return result
-
-result = process_csv_data(data['rows'])
-""",
-        "sample_data": {
-            "rows": [
-                ["Name", "Age", "Score"],
-                ["Alice", "25", "85"],
-                ["Bob", "30", "92"],
-                ["Charlie", "28", "78"]
-            ]
-        }
-    },
     
     "image_stats": {
         "type": TaskType.IMAGE_PROCESSING,
@@ -1089,57 +1020,5 @@ result = {
         }
     },
     
-    "file_size_analyzer": {
-        "type": TaskType.FILE_PROCESSING,
-        "name": "File Size Calculator",
-        "description": "Calculate and format file sizes in various units",
-        "code": """
-def format_file_size(size_bytes):
-    units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-    size = float(size_bytes)
-    unit_index = 0
     
-    while size >= 1024 and unit_index < len(units) - 1:
-        size /= 1024
-        unit_index += 1
-    
-    return {
-        'bytes': size_bytes,
-        'formatted': f"{size:.2f} {units[unit_index]}",
-        'kilobytes': round(size_bytes / 1024, 2),
-        'megabytes': round(size_bytes / (1024**2), 2),
-        'gigabytes': round(size_bytes / (1024**3), 4)
-    }
-
-def calculate_bandwidth_time(size_bytes, bandwidth_mbps):
-    bandwidth_bytes_per_sec = (bandwidth_mbps * 1024 * 1024) / 8
-    time_seconds = size_bytes / bandwidth_bytes_per_sec
-    
-    hours = int(time_seconds // 3600)
-    minutes = int((time_seconds % 3600) // 60)
-    seconds = int(time_seconds % 60)
-    
-    return {
-        'bandwidth_mbps': bandwidth_mbps,
-        'time_seconds': round(time_seconds, 2),
-        'time_formatted': f"{hours}h {minutes}m {seconds}s" if hours > 0 else f"{minutes}m {seconds}s"
-    }
-
-size_bytes = data.get('size_bytes', 1073741824)  # Default 1 GB
-bandwidth_mbps = data.get('bandwidth_mbps', 100)
-
-result = {
-    'size': format_file_size(size_bytes),
-    'download_estimates': {
-        '10_mbps': calculate_bandwidth_time(size_bytes, 10),
-        '100_mbps': calculate_bandwidth_time(size_bytes, bandwidth_mbps),
-        '1000_mbps': calculate_bandwidth_time(size_bytes, 1000)
-    }
-}
-""",
-        "sample_data": {
-            "size_bytes": 1073741824,
-            "bandwidth_mbps": 100
-        }
-    }
 }
