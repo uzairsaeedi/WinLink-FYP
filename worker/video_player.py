@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSlider, QStyle, QSizePolicy, QMessageBox, QFrame, QDesktopWidget
 )
+from core.ui import show_error, show_info, show_warning
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QPalette, QColor, QFont
 import sys
@@ -323,7 +324,7 @@ class VideoPlayerWindow(QWidget):
             
         except Exception as e:
             print(f"[VIDEO] ❌ Error loading video: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to load video:\n{str(e)}")
+            show_error(self, "Error", f"Failed to load video:\n{str(e)}", details=str(e))
     
     def toggle_play_pause(self):
         """Toggle between play and pause"""

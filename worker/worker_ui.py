@@ -23,6 +23,7 @@ if ROOT not in sys.path:
 
 from core.task_executor import TaskExecutor
 from core.network import WorkerNetwork, MessageType, NetworkMessage
+from core.ui import show_info, show_warning, show_error, ask_confirmation
 from assets.styles import STYLE_SHEET
 from worker.task_thread import TaskExecutionThread
 
@@ -1240,7 +1241,7 @@ class WorkerUI(QWidget):
     def start_worker(self):
         port = self.port_input.text().strip()
         if not port:
-            QMessageBox.warning(self, "Missing Port", "Enter port to start.")
+            show_warning(self, "Missing Port", "Enter port to start.")
             return
 
         if self.network.start_server(int(port)):
@@ -1269,7 +1270,7 @@ class WorkerUI(QWidget):
                     "Task execution details will appear here when tasks are received..."
                 )
         else:
-            QMessageBox.critical(self, "Error", "Failed to start.")
+            show_error(self, "Error", "Failed to start.")
 
     def stop_worker(self):
         self.network.stop()
@@ -1604,7 +1605,7 @@ class WorkerUI(QWidget):
         if fn:
             with open(fn, "w", encoding="utf-8") as f:
                 f.write(self.task_log.toPlainText())
-            QMessageBox.information(self, "Exported", f"Log saved to {fn}")
+            show_info(self, "Exported", f"Log saved to {fn}")
 
     def start_monitoring_thread(self):
         def monitor():

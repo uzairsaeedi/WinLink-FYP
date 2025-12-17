@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(__file__, "..", "..")))
 from assets.styles import STYLE_SHEET
 from core.task_manager import TaskManager, TASK_TEMPLATES, TaskStatus, TaskType
 from core.network import MasterNetwork, MessageType
+from core.ui import show_info, show_warning, show_error, ask_confirmation
 
 class MasterUI(QtWidgets.QWidget):
     def __init__(self):
@@ -1395,9 +1396,9 @@ class MasterUI(QtWidgets.QWidget):
                 del self.task_manager.tasks[task_id]
             
             self.update_task_queue()
-            QtWidgets.QMessageBox.information(self, "Success", f"Cleared {len(tasks_to_remove)} completed tasks")
+            show_info(self, "Success", f"Cleared {len(tasks_to_remove)} completed tasks")
         except Exception as e:
-            QtWidgets.QMessageBox.warning(self, "Error", f"Error clearing tasks: {e}")
+            show_warning(self, "Error", f"Error clearing tasks: {e}", details=str(e))
     
     def export_dashboard_report(self):
         """Export dashboard statistics to a file"""
@@ -1426,9 +1427,9 @@ class MasterUI(QtWidgets.QWidget):
                 
                 f.write("\n" + "=" * 60 + "\n")
             
-            QtWidgets.QMessageBox.information(self, "Success", f"Report exported to {filename}")
+            show_info(self, "Success", f"Report exported to {filename}")
         except Exception as e:
-            QtWidgets.QMessageBox.warning(self, "Error", f"Error exporting report: {e}")
+            show_warning(self, "Error", f"Error exporting report: {e}", details=str(e))
     
     def create_analytics_tab(self):
         """Create analytics and visualization tab"""
@@ -1666,7 +1667,7 @@ class MasterUI(QtWidgets.QWidget):
                     full_task = t
                     break
             if not full_task:
-                QtWidgets.QMessageBox.information(self, "Task Not Found", "Could not find task details")
+                show_info(self, "Task Not Found", "Could not find task details")
                 return
 
             details = []
@@ -1811,7 +1812,7 @@ class MasterUI(QtWidgets.QWidget):
             print(f"[MASTER] Total selected workers: {len(selected_workers)}")
         
         if not selected_workers:
-            QtWidgets.QMessageBox.warning(self, "No Selection", "Please check at least one worker from the dropdown")
+            show_warning(self, "No Selection", "Please check at least one worker from the dropdown")
             return
         
         success_count = 0
@@ -1845,7 +1846,7 @@ class MasterUI(QtWidgets.QWidget):
             msg_parts.append(f"❌ Failed: {fail_count}")
         
         if msg_parts:
-            QtWidgets.QMessageBox.information(self, "Connection Results", "\n".join(msg_parts))
+            show_info(self, "Connection Results", "\n".join(msg_parts))
         
         self.refresh_workers_async()
         self.refresh_discovered_workers()
@@ -1855,7 +1856,7 @@ class MasterUI(QtWidgets.QWidget):
         discovered = self.network.get_discovered_workers()
         
         if not discovered:
-            QtWidgets.QMessageBox.warning(self, "No Workers", "No workers discovered yet")
+            show_warning(self, "No Workers", "No workers discovered yet")
             return
         
         success_count = 0
@@ -1888,7 +1889,7 @@ class MasterUI(QtWidgets.QWidget):
             msg_parts.append(f"❌ Failed: {fail_count}")
         
         if msg_parts:
-            QtWidgets.QMessageBox.information(self, "Bulk Connection Results", "\n".join(msg_parts))
+            show_info(self, "Bulk Connection Results", "\n".join(msg_parts))
         
         self.refresh_workers_async()
         self.refresh_discovered_workers()
@@ -1898,13 +1899,12 @@ class MasterUI(QtWidgets.QWidget):
         ip = self.ip_input.text().strip()
         port = self.port_input.text().strip()
         if not ip or not port:
-            QtWidgets.QMessageBox.warning(self, "Missing Info", "Enter both IP and Port")
+            show_warning(self, "Missing Info", "Enter both IP and Port")
             return
         worker_id = f"{ip}:{port}"
 
         if worker_id in self.network.get_connected_workers():
-            QtWidgets.QMessageBox.information(self, "Already Connected", 
-                f"Already connected to {worker_id}")
+            show_info(self, "Already Connected", f"Already connected to {worker_id}")
             return
 
         self.resource_display.setPlainText(f"🔄 Connecting to {worker_id}...\n\nRetrying up to 3 times if needed...")
@@ -1912,19 +1912,15 @@ class MasterUI(QtWidgets.QWidget):
         
         connected = self.network.connect_to_worker(worker_id, ip, int(port))
         if not connected:
-            error_msg = (
-                f"Failed to connect to {worker_id} after 3 attempts\n\n"
-                "Common fixes:\n"
-                "1. Ensure Worker app is running and 'Start Worker' is clicked\n"
-                "2. Check Worker's console shows: '✅ Server started successfully'\n"
-                "3. Verify both PCs are on the same network\n"
-                "4. Try waiting 10 more seconds and retry\n\n"
-                "Check console output for detailed error messages."
-            )
-            QtWidgets.QMessageBox.critical(self, "Connection Failed", error_msg)
+            # Use detailed error captured by the network layer if available
+            detail = getattr(self.network, 'last_connect_error', None)
+            title = "Connection Failed"
+            text = f"Failed to connect to {worker_id} after {3} attempts"
+            details = detail or "No additional details available. Check Worker and network settings."
+            self.show_error_dialog(title, text, details=details, copy_text=details)
             self.resource_display.setPlainText("❌ Connection failed. See error message.")
         else:
-            QtWidgets.QMessageBox.information(self, "Connected", f"✅ Connected to {worker_id}")
+            show_info(self, "Connected", f"✅ Connected to {worker_id}")
 
             self.resource_display.setPlainText(f"✅ Connected to {worker_id}\n\n⏳ Waiting for resource data...")
             QtCore.QTimer.singleShot(300, lambda: self.network.request_resources_from_worker(worker_id))
@@ -1965,6 +1961,43 @@ class MasterUI(QtWidgets.QWidget):
         # Ensure disconnect button state matches selection
         self.on_worker_selection_changed()
 
+    def show_error_dialog(self, title: str, text: str, details: str = None, copy_text: str = None):
+        """Show a rich error dialog with optional detailed text and a Copy button.
+
+        - `details` is shown in the dialog's Detailed Text area.
+        - `copy_text` (if provided) is copied to clipboard when the user clicks "Copy Details".
+        """
+        try:
+            dlg = QtWidgets.QMessageBox(self)
+            dlg.setIcon(QtWidgets.QMessageBox.Critical)
+            dlg.setWindowTitle(title)
+            dlg.setText(text)
+            if details:
+                dlg.setDetailedText(details)
+
+            copy_btn = None
+            try:
+                copy_btn = dlg.addButton("Copy Details", QtWidgets.QMessageBox.ActionRole)
+            except Exception:
+                copy_btn = None
+
+            ok_btn = dlg.addButton(QtWidgets.QMessageBox.Ok)
+            dlg.exec_()
+
+            clicked = dlg.clickedButton()
+            if copy_btn and clicked == copy_btn:
+                # Copy either explicit copy_text or the detailed text
+                data_to_copy = copy_text if copy_text is not None else (details or text)
+                try:
+                    QtWidgets.QApplication.clipboard().setText(data_to_copy)
+                except Exception:
+                    pass
+        except Exception as e:
+            try:
+                show_error(self, title, f"{text}\n\nDetails: {e}")
+            except Exception:
+                print(f"Failed to show error dialog: {e}")
+
     def disconnect_selected_worker(self):
         print("[MASTER UI] disconnect_selected_worker called")
         sel = self.workers_list.currentItem()
@@ -1974,7 +2007,7 @@ class MasterUI(QtWidgets.QWidget):
         except Exception:
             pass
         if not sel:
-            QtWidgets.QMessageBox.warning(self, "No Selection", "Please select a worker to disconnect")
+            show_warning(self, "No Selection", "Please select a worker to disconnect")
             return
 
         # Prefer stored worker_id from the list item's data for robust lookup
@@ -1992,19 +2025,9 @@ class MasterUI(QtWidgets.QWidget):
             print(f"[MASTER] Attempting disconnect: sel_text={ip_port}, resolved_worker_id={worker_id}")
         
         if not worker_id:
-            QtWidgets.QMessageBox.warning(self, "Worker Not Found", 
-                f"Could not find worker {ip_port}")
+            show_warning(self, "Worker Not Found", f"Could not find worker {ip_port}")
             return
-
-        reply = QtWidgets.QMessageBox.question(
-            self, 
-            "Confirm Disconnect",
-            f"Disconnect from worker {ip_port}?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No
-        )
-        
-        if reply == QtWidgets.QMessageBox.Yes:
+        if ask_confirmation(self, "Confirm Disconnect", f"Disconnect from worker {ip_port}?"):
             try:
                 # Perform network disconnect
                 print(f"[MASTER UI] Calling network.disconnect_worker({worker_id})")
@@ -2028,10 +2051,11 @@ class MasterUI(QtWidgets.QWidget):
                 self.update_resource_display()
                 self.refresh_task_table_async()
 
-                QtWidgets.QMessageBox.information(self, "Disconnected", f"Successfully disconnected from {ip_port}")
+                show_info(self, "Disconnected", f"Successfully disconnected from {ip_port}")
                 self.disconnect_btn.setEnabled(False)
             except Exception as e:
-                QtWidgets.QMessageBox.critical(self, "Error", f"Failed to disconnect: {str(e)}")
+                details = str(e)
+                self.show_error_dialog("Error", f"Failed to disconnect from {ip_port}", details=details, copy_text=details)
                 print(f"[MASTER] ❌ Error disconnecting: {e}")
 
     def show_worker_context_menu(self, pos):
@@ -2054,26 +2078,22 @@ class MasterUI(QtWidgets.QWidget):
         """Disconnect from all connected workers and notify them."""
         workers = self.network.get_connected_workers()
         if not workers:
-            QtWidgets.QMessageBox.information(self, "No Workers", "There are no connected workers to disconnect.")
+            show_info(self, "No Workers", "There are no connected workers to disconnect.")
             return
 
-        reply = QtWidgets.QMessageBox.question(
-            self,
-            "Confirm Disconnect All",
-            f"Disconnect from ALL connected workers ({len(workers)})?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No
-        )
-        if reply != QtWidgets.QMessageBox.Yes:
+        if not ask_confirmation(self, "Confirm Disconnect All", f"Disconnect from ALL connected workers ({len(workers)})?"):
             return
 
         # Iterate over a snapshot of worker ids to avoid mutation during iteration
         worker_ids = list(workers.keys())
+        disconnect_errors = []
         for wid in worker_ids:
             try:
                 print(f"[MASTER UI] disconnect_all_workers calling network.disconnect_worker({wid})")
                 self.network.disconnect_worker(wid)
             except Exception as e:
+                err = f"{wid}: {e}"
+                disconnect_errors.append(err)
                 print(f"[MASTER UI] Error disconnecting {wid}: {e}")
             try:
                 with self.worker_resources_lock:
@@ -2082,15 +2102,22 @@ class MasterUI(QtWidgets.QWidget):
                 pass
             try:
                 self.task_manager.requeue_tasks_for_worker(wid)
-            except Exception:
-                pass
+            except Exception as e:
+                # record requeue errors as well
+                err = f"requeue {wid}: {e}"
+                disconnect_errors.append(err)
+                print(f"[MASTER UI] Error requeueing tasks for {wid}: {e}")
 
         QtCore.QTimer.singleShot(100, self.refresh_workers)
         self.refresh_workers_async()
         self.refresh_discovered_workers()
         self.update_resource_display()
         self.refresh_task_table_async()
-        QtWidgets.QMessageBox.information(self, "Disconnected", f"Disconnected from {len(worker_ids)} workers")
+        if disconnect_errors:
+            details = "\n".join(disconnect_errors)
+            self.show_error_dialog("Partial Disconnect Errors", f"Disconnected from {len(worker_ids)} workers with errors", details=details, copy_text=details)
+        else:
+            show_info(self, "Disconnected", f"Disconnected from {len(worker_ids)} workers")
 
     def on_task_type_changed(self):
         """Update template dropdown based on selected task type"""
@@ -2131,24 +2158,24 @@ class MasterUI(QtWidgets.QWidget):
     def submit_task(self):
         code = self.task_code_edit.toPlainText()
         if not code.strip():
-            QtWidgets.QMessageBox.warning(self, "Missing Code", "Task code cannot be empty.")
+            show_warning(self, "Missing Code", "Task code cannot be empty.")
             return
         
         try:
             data = json.loads(self.task_data_edit.toPlainText() or "{}")
         except json.JSONDecodeError:
-            QtWidgets.QMessageBox.critical(self, "Invalid JSON", "Task data must be valid JSON.")
+            show_error(self, "Invalid JSON", "Task data must be valid JSON.")
             return
 
         try:
             selected_type = TaskType[self.task_type_combo.currentText()]
         except KeyError:
-            QtWidgets.QMessageBox.critical(self, "Invalid Task Type", "Selected task type is not valid.")
+            show_error(self, "Invalid Task Type", "Selected task type is not valid.")
             return
 
         connected_workers = self.network.get_connected_workers()
         if not connected_workers:
-            QtWidgets.QMessageBox.warning(self, "No Workers", "Connect at least one worker before submitting tasks.")
+            show_warning(self, "No Workers", "Connect at least one worker before submitting tasks.")
             return
 
         task_id = self.task_manager.create_task(selected_type, code, data)
@@ -2158,7 +2185,7 @@ class MasterUI(QtWidgets.QWidget):
         
         assigned_worker = self.dispatch_task_to_worker(task_id, code, data)
         if not assigned_worker:
-            QtWidgets.QMessageBox.critical(self, "Dispatch Failed", "Failed to dispatch task to any worker.")
+            show_error(self, "Dispatch Failed", "Failed to dispatch task to any worker.")
             print(f"[MASTER] ❌ Task {task_id[:8]}... dispatch failed - no available workers")
         else:
             worker_short = assigned_worker[:20] + "..." if len(assigned_worker) > 20 else assigned_worker
@@ -2170,20 +2197,18 @@ class MasterUI(QtWidgets.QWidget):
         """Send video streaming request to selected worker"""
         video_url = self.video_url_input.text().strip()
         if not video_url:
-            QtWidgets.QMessageBox.warning(self, "Missing URL", "Please enter a video URL.")
+            show_warning(self, "Missing URL", "Please enter a video URL.")
             return
         
         # Validate URL format
         if not (video_url.startswith('http://') or video_url.startswith('https://')):
-            QtWidgets.QMessageBox.warning(self, "Invalid URL", 
-                "Video URL must start with http:// or https://")
+            show_warning(self, "Invalid URL", "Video URL must start with http:// or https://")
             return
         
         # Get selected worker
         selected_index = self.video_worker_combo.currentIndex()
         if selected_index < 0:
-            QtWidgets.QMessageBox.warning(self, "No Worker", 
-                "No worker selected. Please connect a worker first.")
+            show_warning(self, "No Worker", "No worker selected. Please connect a worker first.")
             return
         
         worker_id = self.video_worker_combo.itemData(selected_index)
@@ -2223,12 +2248,7 @@ class MasterUI(QtWidgets.QWidget):
                 self.task_manager.assign_task_to_worker(task_id, worker_id)
                 print(f"[MASTER] ✅ Video task sent successfully to {worker_name}")
                 
-                QtWidgets.QMessageBox.information(
-                    self,
-                    "Video Sent",
-                    f"Video streaming request sent to worker:\n{worker_name}\n\n"
-                    f"The video player will open on the worker PC shortly."
-                )
+                show_info(self, "Video Sent", f"Video streaming request sent to worker:\n{worker_name}\n\nThe video player will open on the worker PC shortly.")
                 
                 # Clear inputs
                 self.video_url_input.clear()
@@ -2237,19 +2257,11 @@ class MasterUI(QtWidgets.QWidget):
                 # Refresh task table
                 self.refresh_task_table_async()
             else:
-                QtWidgets.QMessageBox.critical(
-                    self,
-                    "Send Failed",
-                    f"Failed to send video request to worker {worker_name}"
-                )
+                show_error(self, "Send Failed", f"Failed to send video request to worker {worker_name}")
                 print(f"[MASTER] ❌ Failed to send video task to {worker_name}")
                 
         except Exception as e:
-            QtWidgets.QMessageBox.critical(
-                self,
-                "Error",
-                f"Error creating video task: {str(e)}"
-            )
+            show_error(self, "Error", f"Error creating video task: {str(e)}", details=str(e))
             print(f"[MASTER] ❌ Error creating video task: {e}")
 
     def dispatch_task_to_worker(self, task_id: str, code: str, data: dict) -> Optional[str]:
@@ -2593,11 +2605,7 @@ class MasterUI(QtWidgets.QWidget):
             self.refresh_task_table_async()
         QtCore.QTimer.singleShot(
             0,
-            lambda: QtWidgets.QMessageBox.critical(
-                self,
-                "Worker Error",
-                f"Worker {worker_id} reported an error:\n{error}"
-            )
+            lambda: show_error(self, "Worker Error", f"Worker {worker_id} reported an error:\n{error}")
         )
 
     def clear_completed_tasks(self):

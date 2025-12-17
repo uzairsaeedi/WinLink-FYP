@@ -86,6 +86,10 @@ class MasterNetwork:
         print(f"[MASTER] Target: {worker_id}")
         print(f"[MASTER] Will attempt {retries} times with 3-second delays")
         
+        # Prepare to capture error details for UI consumption
+        error_lines = []
+        self.last_connect_error = ""
+
         for attempt in range(retries):
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -97,14 +101,20 @@ class MasterNetwork:
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 
                 if attempt > 0:
-                    print(f"[MASTER] ⏳ Retry {attempt}/{retries-1}: Attempting connection...")
+                    msg = f"[MASTER] ⏳ Retry {attempt}/{retries-1}: Attempting connection..."
+                    print(msg)
+                    error_lines.append(msg)
                 else:
-                    print(f"[MASTER] 🔄 Attempt 1/{retries}: Connecting to {ip}:{port}...")
+                    msg = f"[MASTER] 🔄 Attempt 1/{retries}: Connecting to {ip}:{port}..."
+                    print(msg)
+                    error_lines.append(msg)
                 
                 # Try to connect
                 sock.connect((ip, port))
                 sock.settimeout(30.0)  # 30 second timeout for operations after connection
                 print(f"[MASTER] ✅ Successfully connected to {worker_id}")
+                # Clear previous error on success
+                self.last_connect_error = ""
                 print(f"[MASTER] ============================================\n")
                 
                 with self.lock:
@@ -127,61 +137,95 @@ class MasterNetwork:
                 return True
                 
             except socket.timeout:
-                print(f"[MASTER] ⏱️  Connection timed out (waited 10 seconds)")
+                msg = f"[MASTER] ⏱️  Connection timed out (waited 10 seconds)"
+                print(msg)
+                error_lines.append(msg)
                 if attempt < retries - 1:
-                    print(f"[MASTER] 💤 Waiting 3 seconds before retry...")
+                    msg2 = f"[MASTER] 💤 Waiting 3 seconds before retry..."
+                    print(msg2)
+                    error_lines.append(msg2)
                     time.sleep(3)
                     continue
-                print(f"\n[MASTER] ❌ Connection failed after {retries} attempts")
-                print(f"[MASTER] Possible causes:")
-                print(f"[MASTER]   1. Worker is not running or didn't click 'Start Worker'")
-                print(f"[MASTER]   2. **FIREWALL is blocking the connection** (most common!)")
-                print(f"[MASTER]   3. Wrong IP address: {ip}")
-                print(f"[MASTER]   4. Wrong port: {port}")
-                print(f"[MASTER]   5. Different network (check both PCs are on same WiFi/LAN)")
-                print(f"[MASTER] ")
-                print(f"[MASTER] 🛡️  FIREWALL FIX (Run as Administrator on BOTH PCs):")
-                print(f"[MASTER]   netsh advfirewall firewall add rule name=\"WinLink\" dir=in action=allow protocol=TCP localport={port} enable=yes")
-                print(f"[MASTER] ============================================\n")
+                # Final failure: produce full diagnostic
+                final_msgs = [f"[MASTER] ❌ Connection failed after {retries} attempts",
+                              "[MASTER] Possible causes:",
+                              "[MASTER]   1. Worker is not running or didn't click 'Start Worker'",
+                              "[MASTER]   2. **FIREWALL is blocking the connection** (most common!)",
+                              f"[MASTER]   3. Wrong IP address: {ip}",
+                              f"[MASTER]   4. Wrong port: {port}",
+                              "[MASTER]   5. Different network (check both PCs are on same WiFi/LAN)",
+                              "",
+                              "[MASTER] 🛡️  FIREWALL FIX (Run as Administrator on BOTH PCs):",
+                              f"[MASTER]   netsh advfirewall firewall add rule name=\"WinLink\" dir=in action=allow protocol=TCP localport={port} enable=yes",
+                              "[MASTER] ============================================\n"]
+                for ln in final_msgs:
+                    print(ln)
+                    error_lines.append(ln)
+                self.last_connect_error = "\n".join(error_lines)
                 return False
                 
             except ConnectionRefusedError:
-                print(f"[MASTER] 🚫 Connection refused")
+                msg = f"[MASTER] 🚫 Connection refused"
+                print(msg)
+                error_lines.append(msg)
                 if attempt < retries - 1:
-                    print(f"[MASTER] 💤 Worker may still be starting, waiting 3 seconds...")
+                    msg2 = f"[MASTER] 💤 Worker may still be starting, waiting 3 seconds..."
+                    print(msg2)
+                    error_lines.append(msg2)
                     time.sleep(3)
                     continue
-                print(f"\n[MASTER] ❌ Connection refused after {retries} attempts")
-                print(f"[MASTER] This means Worker is NOT listening on {ip}:{port}")
-                print(f"[MASTER] Solutions:")
-                print(f"[MASTER]   1. Check Worker console shows: '✅ Server started successfully'")
-                print(f"[MASTER]   2. Verify Worker clicked 'Start Worker' button")
-                print(f"[MASTER]   3. Check port number matches (Worker shows IP:PORT)")
-                print(f"[MASTER] ============================================\n")
+                final_msgs = [f"[MASTER] ❌ Connection refused after {retries} attempts",
+                              f"[MASTER] This means Worker is NOT listening on {ip}:{port}",
+                              "[MASTER] Solutions:",
+                              "[MASTER]   1. Check Worker's console shows: '✅ Server started successfully'",
+                              "[MASTER]   2. Verify Worker clicked 'Start Worker' button",
+                              "[MASTER]   3. Check port number matches (Worker shows IP:PORT)",
+                              "[MASTER] ============================================\n"]
+                for ln in final_msgs:
+                    print(ln)
+                    error_lines.append(ln)
+                self.last_connect_error = "\n".join(error_lines)
                 return False
                 
             except OSError as e:
                 if e.errno == 10061:  # Connection refused (Windows)
                     if attempt < retries - 1:
-                        print(f"[MASTER] ⏳ Worker not ready, waiting 3 seconds...")
+                        msg = f"[MASTER] ⏳ Worker not ready, waiting 3 seconds..."
+                        print(msg)
+                        error_lines.append(msg)
                         time.sleep(3)
                         continue
                 elif e.errno == 10065:  # No route to host
-                    print(f"[MASTER] 🌐 No route to host {ip}")
-                    print(f"[MASTER] Check both PCs are on the same network")
+                    msg = f"[MASTER] 🌐 No route to host {ip}"
+                    print(msg)
+                    error_lines.append(msg)
+                    msg2 = "[MASTER] Check both PCs are on the same network"
+                    print(msg2)
+                    error_lines.append(msg2)
+                    self.last_connect_error = "\n".join(error_lines)
                     return False
-                print(f"[MASTER] ❌ Network error: {e}")
-                print(f"[MASTER] ============================================\n")
+                msg = f"[MASTER] ❌ Network error: {e}"
+                print(msg)
+                error_lines.append(msg)
+                error_lines.append("[MASTER] ============================================\n")
+                self.last_connect_error = "\n".join(error_lines)
                 return False
                 
             except Exception as e:
+                msg = f"[MASTER] ⚠️  Error: {e}"
+                print(msg)
+                error_lines.append(msg)
                 if attempt < retries - 1:
-                    print(f"[MASTER] ⚠️  Error: {e}")
-                    print(f"[MASTER] 💤 Waiting 3 seconds before retry...")
+                    msg2 = f"[MASTER] 💤 Waiting 3 seconds before retry..."
+                    print(msg2)
+                    error_lines.append(msg2)
                     time.sleep(3)
                     continue
-                print(f"\n[MASTER] ❌ Failed to connect: {e}")
-                print(f"[MASTER] ============================================\n")
+                final = f"[MASTER] ❌ Failed to connect: {e}"
+                print(final)
+                error_lines.append(final)
+                error_lines.append("[MASTER] ============================================\n")
+                self.last_connect_error = "\n".join(error_lines)
                 return False
         
         return False
