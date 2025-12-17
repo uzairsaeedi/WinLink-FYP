@@ -1505,14 +1505,17 @@ class MasterUI(QtWidgets.QWidget):
         """Update the dropdown with newly discovered workers"""
         discovered = self.network.get_discovered_workers()
 
-        checked_workers = []
+        # Preserve checked selections by worker_id
+        checked_ids = set()
         for i in range(self.discovered_combo.count()):
             item = self.discovered_combo.model().item(i)
             if item and item.checkState() == QtCore.Qt.Checked:
                 worker_info_json = item.data(Qt.UserRole)
                 if worker_info_json:
                     try:
-                        checked_workers.append(json.loads(worker_info_json))
+                        info = json.loads(worker_info_json)
+                        wid = f"{info.get('ip')}:{info.get('port')}"
+                        checked_ids.add(wid)
                     except (json.JSONDecodeError, TypeError):
                         pass
 
@@ -1549,9 +1552,10 @@ class MasterUI(QtWidgets.QWidget):
             item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled)
             item.setCheckable(True)
 
+            # Store struct as JSON for later retrieval
             item.setData(json.dumps(info), Qt.UserRole)
-
-            if info in checked_workers:
+            wid = f"{ip}:{port}"
+            if wid in checked_ids:
                 item.setCheckState(QtCore.Qt.Checked)
                 selected_count += 1
             else:
@@ -1625,6 +1629,7 @@ class MasterUI(QtWidgets.QWidget):
             font.setFamily("Consolas")
             font.setPointSize(12)
             font.setWeight(QtGui.QFont.Normal)
+            font.setPointSize(14)
             text.setFont(font)
             text.setStyleSheet("QTextEdit { background: #0f1620; color: #e6e6fa; padding: 8px; border-radius: 6px; }")
             layout.addWidget(text)
@@ -1899,6 +1904,9 @@ class MasterUI(QtWidgets.QWidget):
                 if f"{info['ip']}:{info['port']}" == ip_port:
                     worker_id = wid
                     break
+
+        if self.debug:
+            print(f"[MASTER] Attempting disconnect: sel_text={ip_port}, resolved_worker_id={worker_id}")
         
         if not worker_id:
             QtWidgets.QMessageBox.warning(self, "Worker Not Found", 
@@ -1917,7 +1925,7 @@ class MasterUI(QtWidgets.QWidget):
             try:
                 # Perform network disconnect
                 self.network.disconnect_worker(worker_id)
-                print(f"[MASTER] 🔌 Disconnected from worker: {ip_port}")
+                print(f"[MASTER] 🔌 Disconnected from worker: {ip_port} (worker_id={worker_id})")
 
                 # Clear cached resources
                 with self.worker_resources_lock:
@@ -1929,7 +1937,7 @@ class MasterUI(QtWidgets.QWidget):
                 except Exception:
                     pass
 
-                # Refresh UI
+                # Refresh UI promptly
                 QtCore.QTimer.singleShot(100, self.refresh_workers)
                 self.refresh_workers_async()
                 self.refresh_discovered_workers()

@@ -513,11 +513,11 @@ class MasterNetwork:
                             pass
                     
                     except socket.timeout:
-                        # Clean up stale workers (not seen in last 15 seconds)
+                        # Clean up stale workers (not seen in last 60 seconds)
                         with self.lock:
                             current_time = time.time()
                             stale = [wid for wid, info in self.discovered_workers.items()
-                                   if current_time - info.get('last_seen', 0) > 15]
+                                   if current_time - info.get('last_seen', 0) > 60]
                             for wid in stale:
                                 self.discovered_workers.pop(wid, None)
                         continue
