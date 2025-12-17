@@ -186,17 +186,41 @@ class MasterNetwork:
     
     def disconnect_worker(self, worker_id: str):
         """Disconnect from a worker"""
+        # Best-effort: send DISCONNECT, shutdown and close socket, then ensure cleanup
+        sock = None
         with self.lock:
-            if worker_id in self.workers:
+            sock = self.workers.get(worker_id)
+
+        if sock:
+            try:
+                msg = NetworkMessage(MessageType.DISCONNECT)
                 try:
-                    # Send disconnect message
-                    msg = NetworkMessage(MessageType.DISCONNECT)
-                    self.workers[worker_id].send(msg.to_json().encode() + b'\n')
-                    self.workers[worker_id].close()
-                except:
+                    sock.send(msg.to_json().encode() + b'\n')
+                except Exception:
                     pass
-                
-                del self.workers[worker_id]
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except Exception:
+                    pass
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        # Use centralized removal to keep state consistent
+        try:
+            self._remove_worker(worker_id)
+        except Exception:
+            # Fallback: attempt manual cleanup
+            with self.lock:
+                if worker_id in self.workers:
+                    try:
+                        self.workers[worker_id].close()
+                    except Exception:
+                        pass
+                    del self.workers[worker_id]
                 if worker_id in self.worker_info:
                     self.worker_info[worker_id]['status'] = 'disconnected'
     

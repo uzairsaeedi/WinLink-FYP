@@ -495,6 +495,12 @@ class MasterUI(QtWidgets.QWidget):
         """)
         self.discovered_combo.setView(list_view)
 
+        # Ensure clicking items toggles checkbox state and persists selection
+        try:
+            list_view.clicked.connect(self._on_discovered_item_clicked)
+        except Exception:
+            pass
+
         combo_model.dataChanged.connect(self._on_combo_selection_changed)
         
         self.discovered_combo.setStyleSheet("""
@@ -884,6 +890,13 @@ class MasterUI(QtWidgets.QWidget):
         self.tasks_table.verticalHeader().setVisible(False)
         self.tasks_table.setMinimumHeight(420)
         self.tasks_table.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        # Smooth scrolling and word wrap for better UX
+        try:
+            self.tasks_table.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+            self.tasks_table.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        except Exception:
+            pass
+        self.tasks_table.setWordWrap(True)
         
         # Set column widths
         header = self.tasks_table.horizontalHeader()
@@ -976,6 +989,12 @@ class MasterUI(QtWidgets.QWidget):
         btn_layout.addWidget(clear_btn)
         btn_layout.addStretch()
         queue_layout.addLayout(btn_layout)
+
+        # Show full task details on double-click
+        try:
+            self.tasks_table.cellDoubleClicked.connect(self._on_task_cell_double_clicked)
+        except Exception:
+            pass
 
         layout.addWidget(queue_section, 1)
 
@@ -1556,6 +1575,99 @@ class MasterUI(QtWidgets.QWidget):
         self._update_combo_text()
 
         self._update_connect_button_states()
+
+    def _on_task_cell_double_clicked(self, row, col):
+        """Open a dialog showing full task result/output when a row is double-clicked."""
+        try:
+            id_item = self.tasks_table.item(row, 0)
+            if not id_item:
+                return
+            task_id_short = id_item.text()
+            # Find full task id from task_manager by matching prefix
+            full_task = None
+            for t in self.task_manager.get_all_tasks():
+                if t.id.startswith(task_id_short):
+                    full_task = t
+                    break
+            if not full_task:
+                QtWidgets.QMessageBox.information(self, "Task Not Found", "Could not find task details")
+                return
+
+            details = []
+            details.append(f"ID: {full_task.id}")
+            details.append(f"Type: {full_task.type.name}")
+            details.append(f"Status: {full_task.status.name}")
+            details.append(f"Worker: {full_task.worker_id or 'N/A'}")
+            details.append("\n--- Result / Output ---\n")
+            if getattr(full_task, 'output', None):
+                details.append(full_task.output)
+            elif full_task.result is not None:
+                try:
+                    details.append(json.dumps(full_task.result, indent=2))
+                except Exception:
+                    details.append(str(full_task.result))
+            elif full_task.error:
+                details.append(f"ERROR:\n{full_task.error}")
+            else:
+                details.append("No output available yet")
+
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("Task Details")
+            dialog.resize(1000, 700)
+            layout = QtWidgets.QVBoxLayout(dialog)
+
+            # Styled read-only text area with monospace font and wrapping
+            text = QtWidgets.QTextEdit()
+            text.setReadOnly(True)
+            text.setLineWrapMode(QtWidgets.QTextEdit.WidgetWidth)
+            text.setPlainText("\n".join(details))
+            font = text.font()
+            font.setFamily("Consolas")
+            font.setPointSize(12)
+            font.setWeight(QtGui.QFont.Normal)
+            text.setFont(font)
+            text.setStyleSheet("QTextEdit { background: #0f1620; color: #e6e6fa; padding: 8px; border-radius: 6px; }")
+            layout.addWidget(text)
+
+            # Buttons: Copy and Close
+            btn_row = QtWidgets.QHBoxLayout()
+            btn_row.addStretch()
+            copy_btn = QtWidgets.QPushButton("Copy Output")
+            def _copy():
+                try:
+                    QtWidgets.QApplication.clipboard().setText(text.toPlainText())
+                except Exception:
+                    pass
+            copy_btn.clicked.connect(_copy)
+            close_btn = QtWidgets.QPushButton("Close")
+            close_btn.clicked.connect(dialog.accept)
+            for b in (copy_btn, close_btn):
+                b.setMinimumWidth(110)
+                b.setMinimumHeight(36)
+            btn_row.addWidget(copy_btn)
+            btn_row.addWidget(close_btn)
+            layout.addLayout(btn_row)
+            dialog.exec_()
+        except Exception as e:
+            if self.debug:
+                print(f"[MASTER] Error opening task details: {e}")
+
+    def _on_discovered_item_clicked(self, index):
+        """Toggle the checkbox state when an item in the discovered dropdown is clicked."""
+        try:
+            model = self.discovered_combo.model()
+            item = model.itemFromIndex(index)
+            if not item or not item.isEnabled():
+                return
+            # Toggle check state
+            new_state = QtCore.Qt.Unchecked if item.checkState() == QtCore.Qt.Checked else QtCore.Qt.Checked
+            item.setCheckState(new_state)
+            # Trigger update handlers
+            self._on_combo_selection_changed()
+            # Keep popup open briefly to avoid losing selection when cursor leaves
+            QtCore.QTimer.singleShot(60, lambda: self.discovered_combo.showPopup() if self.discovered_combo.view().isVisible() else None)
+        except Exception:
+            pass
     
     def _update_connect_button_states(self):
         """Update the enabled state of connect buttons based on checked items"""
@@ -1751,13 +1863,16 @@ class MasterUI(QtWidgets.QWidget):
             current_selection = current_item.text()
         
         self.workers_list.clear()
-        
+
         workers = self.network.get_connected_workers()
         selected_row = -1
         for idx, (worker_id, info) in enumerate(workers.items()):
             entry = f"{info['ip']}:{info['port']}"
-            self.workers_list.addItem(entry)
-            
+            list_item = QtWidgets.QListWidgetItem(entry)
+            # Store worker_id for robust lookup later
+            list_item.setData(Qt.UserRole, worker_id)
+            self.workers_list.addItem(list_item)
+
             # Check if this was the previously selected worker
             if current_selection and entry == current_selection:
                 selected_row = idx
@@ -1765,6 +1880,8 @@ class MasterUI(QtWidgets.QWidget):
         # Restore selection if worker still exists
         if selected_row >= 0:
             self.workers_list.setCurrentRow(selected_row)
+        # Ensure disconnect button state matches selection
+        QtCore.QTimer.singleShot(0, self.on_worker_selection_changed)
 
     def disconnect_selected_worker(self):
         sel = self.workers_list.currentItem()
@@ -1772,13 +1889,16 @@ class MasterUI(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "No Selection", "Please select a worker to disconnect")
             return
 
+        # Prefer stored worker_id from the list item's data for robust lookup
+        worker_id = sel.data(Qt.UserRole)
         ip_port = sel.text()
 
-        worker_id = None
-        for wid, info in self.network.get_connected_workers().items():
-            if f"{info['ip']}:{info['port']}" == ip_port:
-                worker_id = wid
-                break
+        # Fallback: try resolving by matching display text if UserRole not present
+        if not worker_id:
+            for wid, info in self.network.get_connected_workers().items():
+                if f"{info['ip']}:{info['port']}" == ip_port:
+                    worker_id = wid
+                    break
         
         if not worker_id:
             QtWidgets.QMessageBox.warning(self, "Worker Not Found", 
@@ -2097,6 +2217,11 @@ class MasterUI(QtWidgets.QWidget):
                 progress_widget.setFormat("%p%")
             except Exception:
                 progress_widget.setFormat(f"{progress_widget.value()}%")
+            # Keep progress bar visually compact
+            try:
+                progress_widget.setFixedHeight(18)
+            except Exception:
+                pass
             progress_widget.setAlignment(QtCore.Qt.AlignCenter)
             self.tasks_table.setCellWidget(row, 4, progress_widget)
 
@@ -2111,8 +2236,9 @@ class MasterUI(QtWidgets.QWidget):
                 except Exception:
                     full = str(t.result)
 
-                # Trim to reasonable preview length but keep words intact
-                preview_limit = 300
+                # Show full result text in the table (large results may still be visible via tooltip)
+                # Limit extremely long strings to avoid UI freeze, but keep a generous cap
+                preview_limit = 5000
                 if len(full) > preview_limit:
                     result_text = full[:preview_limit].rstrip() + "..."
                 else:
@@ -2123,6 +2249,8 @@ class MasterUI(QtWidgets.QWidget):
                 result_text = "Pending..."
             result_item = QtWidgets.QTableWidgetItem(result_text)
             result_item.setToolTip(result_text)  # Show full text on hover
+            result_item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
+            result_item.setTextAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
             self.tasks_table.setItem(row, 5, result_item)
 
             output_text = ""
@@ -2149,8 +2277,10 @@ class MasterUI(QtWidgets.QWidget):
             
             output_item = QtWidgets.QTableWidgetItem(output_text)
             output_item.setToolTip(output_text)  # Show full text on hover
-
+            output_item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
             output_item.setTextAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
+            # Allow full text to be copied from item
+            output_item.setData(QtCore.Qt.UserRole, output_text)
             self.tasks_table.setItem(row, 6, output_item)
 
             status_item = self.tasks_table.item(row, 2)
@@ -2169,8 +2299,9 @@ class MasterUI(QtWidgets.QWidget):
                 except Exception:
                     pass
 
+            # Calculate reasonable row height based on output lines but keep compact
             lines = output_text.count('\n') + 1
-            estimated = max(60, min(500, lines * 22))
+            estimated = max(36, min(220, lines * 16))
             self.tasks_table.setRowHeight(row, estimated)
 
     def refresh_task_table_async(self):
