@@ -62,6 +62,7 @@ class MasterNetwork:
         self.round_robin_index = 0  # For round-robin task distribution
         self.worker_task_counts: Dict[str, int] = {}  # Track task count per worker
         self.worker_latencies: Dict[str, float] = {}  # Track network latency to workers
+        self.verbose = False  # Set True to enable verbose network prints
         
     def broadcast_task(self, task_id: str, code: str, data: Dict[str, Any]):
         """Send the task to all connected workers"""
@@ -206,10 +207,10 @@ class MasterNetwork:
     
     def request_resources_from_worker(self, worker_id: str) -> bool:
         """Request system resource data from a worker"""
-        print(f"[NETWORK] Requesting resources from {worker_id}")
         msg = NetworkMessage(MessageType.RESOURCE_REQUEST, {})
         result = self._send_message_to_worker(worker_id, msg)
-        print(f"[NETWORK] Resource request sent to {worker_id}: {result}")
+        if self.verbose:
+            print(f"[NETWORK] Resource request sent to {worker_id}: {result}")
         return result
     
     def _send_message_to_worker(self, worker_id: str, message: NetworkMessage) -> bool:
@@ -254,19 +255,25 @@ class MasterNetwork:
     
     def _handle_worker_message(self, worker_id: str, message: NetworkMessage):
         """Handle a message from a worker"""
-        print(f"[MASTER NETWORK] Received message from {worker_id}, type: {message.type}")
-        
         # Update last heartbeat
         with self.lock:
             if worker_id in self.worker_info:
                 self.worker_info[worker_id]['last_heartbeat'] = time.time()
-        
         # Call registered handler
+        # Avoid noisy prints for frequent resource_data messages unless verbose
         if message.type in self.message_handlers:
-            print(f"[MASTER NETWORK] Calling handler for {message.type}")
-            self.message_handlers[message.type](worker_id, message.data)
+            if self.verbose or message.type != MessageType.RESOURCE_DATA:
+                print(f"[MASTER NETWORK] Received message from {worker_id}, type: {message.type}")
+                if self.verbose:
+                    print(f"[MASTER NETWORK] Calling handler for {message.type}")
+            try:
+                self.message_handlers[message.type](worker_id, message.data)
+            except Exception as e:
+                if self.verbose:
+                    print(f"[MASTER NETWORK] Handler error for {message.type}: {e}")
         else:
-            print(f"[MASTER NETWORK] No handler registered for {message.type}")
+            if self.verbose:
+                print(f"[MASTER NETWORK] No handler registered for {message.type}")
     
     def _remove_worker(self, worker_id: str):
         """Remove a worker from active connections"""

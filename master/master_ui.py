@@ -36,6 +36,7 @@ class MasterUI(QtWidgets.QWidget):
         self.worker_resources = {}
         self.worker_resources_lock = threading.Lock()
         self.monitoring_active = True
+        self.debug = False  # Set True for verbose UI debug prints
         
         # Visualization data structures
         self.task_history = deque(maxlen=50)  # Last 50 tasks
@@ -1538,7 +1539,8 @@ class MasterUI(QtWidgets.QWidget):
     
     def _on_combo_selection_changed(self):
         """Handle when checkbox states change in the combo box"""
-        print("[MASTER] _on_combo_selection_changed called")
+        if self.debug:
+            print("[MASTER] _on_combo_selection_changed called")
 
         self._update_combo_text()
 
@@ -1552,10 +1554,12 @@ class MasterUI(QtWidgets.QWidget):
             if item and item.checkState() == QtCore.Qt.Checked and item.isEnabled():
                 checked_count += 1
         
-        print(f"[MASTER] _update_connect_button_states: {checked_count} items checked")
+        if self.debug:
+            print(f"[MASTER] _update_connect_button_states: {checked_count} items checked")
 
         self.connect_discovered_btn.setEnabled(checked_count > 0)
-        print(f"[MASTER] Connect button enabled: {checked_count > 0}")
+        if self.debug:
+            print(f"[MASTER] Connect button enabled: {checked_count > 0}")
     
     def _update_combo_text(self):
         """Update combo box display text based on selections"""
@@ -1580,19 +1584,16 @@ class MasterUI(QtWidgets.QWidget):
     
     def connect_from_list(self):
         """Connect to selected workers from discovered dropdown"""
-        print("[MASTER] connect_from_list called")
-
         selected_workers = []
         model = self.discovered_combo.model()
-        
-        print(f"[MASTER] Combo box has {self.discovered_combo.count()} items")
         
         for i in range(self.discovered_combo.count()):
             item = model.item(i)
             if item:
                 is_checked = item.checkState() == QtCore.Qt.Checked
                 is_enabled = item.isEnabled()
-                print(f"[MASTER] Item {i}: checked={is_checked}, enabled={is_enabled}, text={item.text()}")
+                if self.debug:
+                    print(f"[MASTER] Item {i}: checked={is_checked}, enabled={is_enabled}, text={item.text()}")
                 
                 if is_checked:
                     worker_info_json = item.data(Qt.UserRole)
@@ -1600,11 +1601,14 @@ class MasterUI(QtWidgets.QWidget):
                         try:
                             worker_info = json.loads(worker_info_json)
                             selected_workers.append(worker_info)
-                            print(f"[MASTER] Added worker: {worker_info.get('hostname', 'Unknown')}")
+                            if self.debug:
+                                print(f"[MASTER] Added worker: {worker_info.get('hostname', 'Unknown')}")
                         except (json.JSONDecodeError, TypeError) as e:
-                            print(f"[MASTER] Error parsing worker info: {e}")
+                            if self.debug:
+                                print(f"[MASTER] Error parsing worker info: {e}")
         
-        print(f"[MASTER] Total selected workers: {len(selected_workers)}")
+        if self.debug:
+            print(f"[MASTER] Total selected workers: {len(selected_workers)}")
         
         if not selected_workers:
             QtWidgets.QMessageBox.warning(self, "No Selection", "Please check at least one worker from the dropdown")

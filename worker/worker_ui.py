@@ -39,6 +39,11 @@ class LogSignals(QObject):
     log_message = pyqtSignal(str)
 
 class WorkerUI(QWidget):
+    # Signals to receive network messages in the Qt main thread
+    task_request_signal = pyqtSignal(dict)
+    resource_request_signal = pyqtSignal(dict)
+    heartbeat_signal = pyqtSignal(dict)
+    master_connected_signal = pyqtSignal(tuple)
     def __init__(self):
         super().__init__()
         self.setObjectName("mainWindow")
@@ -75,10 +80,19 @@ class WorkerUI(QWidget):
         self.log_signals = LogSignals()
         self.log_signals.log_message.connect(self._append_log_to_ui)
 
-        self.network.register_handler(MessageType.TASK_REQUEST, self.handle_task_request)
-        self.network.register_handler(MessageType.RESOURCE_REQUEST, self.handle_resource_request)
-        self.network.register_handler(MessageType.HEARTBEAT, self.handle_heartbeat)
-        self.network.set_connection_callback(self.handle_master_connected)
+        # Register network handlers but dispatch to Qt main thread via signals
+        self.network.register_handler(MessageType.TASK_REQUEST, lambda data: self.task_request_signal.emit(data))
+        self.task_request_signal.connect(self.handle_task_request)
+
+        self.network.register_handler(MessageType.RESOURCE_REQUEST, lambda data: self.resource_request_signal.emit(data))
+        self.resource_request_signal.connect(self.handle_resource_request)
+
+        self.network.register_handler(MessageType.HEARTBEAT, lambda data: self.heartbeat_signal.emit(data))
+        self.heartbeat_signal.connect(self.handle_heartbeat)
+
+        # Connection callback: emit signal to main thread
+        self.network.set_connection_callback(lambda addr: self.master_connected_signal.emit(addr))
+        self.master_connected_signal.connect(self.handle_master_connected)
 
         self.setup_ui()
         self.update_ip()
