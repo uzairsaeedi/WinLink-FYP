@@ -63,6 +63,8 @@ class MasterNetwork:
         self.worker_task_counts: Dict[str, int] = {}  # Track task count per worker
         self.worker_latencies: Dict[str, float] = {}  # Track network latency to workers
         self.verbose = False  # Set True to enable verbose network prints
+        self.discovery_thread: Optional[threading.Thread] = None
+        self._discovery_lock = threading.Lock()
         
     def broadcast_task(self, task_id: str, code: str, data: Dict[str, Any]):
         """Send the task to all connected workers"""
@@ -420,9 +422,25 @@ class MasterNetwork:
     def start(self):
         """Start the network manager"""
         self.running = True
+        # Start discovery listener and probe sender
         self._start_discovery_listener()
-        # Start active discovery probe sender to improve discovery reliability
         threading.Thread(target=self._start_discovery_probe_sender, daemon=True).start()
+
+        # Start a watchdog that ensures discovery listener is running
+        def discovery_watchdog():
+            while self.running:
+                try:
+                    with self._discovery_lock:
+                        alive = self.discovery_thread.is_alive() if self.discovery_thread else False
+                    if not alive:
+                        if self.verbose:
+                            print("[MASTER] Discovery thread not alive, restarting listener")
+                        self._start_discovery_listener()
+                except Exception:
+                    pass
+                time.sleep(5)
+
+        threading.Thread(target=discovery_watchdog, daemon=True).start()
 
     def _start_discovery_probe_sender(self):
         """Periodically broadcast a lightweight probe so workers can reply if broadcasts are unreliable."""
@@ -434,6 +452,31 @@ class MasterNetwork:
                 pass
             probe_sock.settimeout(1.0)
             probe_msg = json.dumps({'type': 'master_probe', 'data': {'timestamp': time.time()}}).encode()
+            # Helper to get local IPv4 address
+            def _get_local_ip():
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(('8.8.8.8', 80))
+                    ip = s.getsockname()[0]
+                    s.close()
+                    return ip
+                except Exception:
+                    try:
+                        return socket.gethostbyname(socket.gethostname())
+                    except Exception:
+                        return '127.0.0.1'
+
+            local_ip = _get_local_ip()
+            # derive /24 prefix if possible
+            prefix = None
+            try:
+                parts = local_ip.split('.')
+                if len(parts) == 4 and not local_ip.startswith('127.'):
+                    prefix = '.'.join(parts[:3]) + '.'
+            except Exception:
+                prefix = None
+
+            probe_counter = 0
             while self.running:
                 try:
                     # Send to common broadcast targets; some networks respond to 255.255.255.255 better
@@ -445,6 +488,17 @@ class MasterNetwork:
                         probe_sock.sendto(probe_msg, ('255.255.255.255', self.discovery_port))
                     except Exception:
                         pass
+                    # Every 15 seconds, also probe the local /24 addresses with unicast
+                    probe_counter += 1
+                    if probe_counter >= 5 and prefix:
+                        probe_counter = 0
+                        for i in range(1, 255):
+                            try:
+                                target = prefix + str(i)
+                                probe_sock.sendto(probe_msg, (target, self.discovery_port))
+                            except Exception:
+                                # Ignore send errors for unreachable addresses
+                                pass
                 except Exception:
                     pass
                 time.sleep(3)
@@ -527,8 +581,15 @@ class MasterNetwork:
             
             except Exception as e:
                 print(f"[MASTER] Failed to start discovery listener: {e}")
-        
-        threading.Thread(target=listen, daemon=True).start()
+            finally:
+                # Mark thread as ended
+                with self._discovery_lock:
+                    self.discovery_thread = None
+
+        t = threading.Thread(target=listen, daemon=True)
+        with self._discovery_lock:
+            self.discovery_thread = t
+        t.start()
     
     def get_discovered_workers(self) -> Dict[str, Dict]:
         """Get list of discovered workers"""

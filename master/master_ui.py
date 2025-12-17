@@ -688,6 +688,8 @@ class MasterUI(QtWidgets.QWidget):
         w_l.setContentsMargins(15, 25, 15, 15)
         self.workers_list = QtWidgets.QListWidget()
         self.workers_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.workers_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.workers_list.setFocusPolicy(QtCore.Qt.StrongFocus)
         
         self.disconnect_btn = QtWidgets.QPushButton("Disconnect")
         self.disconnect_btn.setObjectName("stopBtn")
@@ -1876,6 +1878,11 @@ class MasterUI(QtWidgets.QWidget):
             list_item = QtWidgets.QListWidgetItem(entry)
             # Store worker_id for robust lookup later
             list_item.setData(Qt.UserRole, worker_id)
+            # Ensure item is selectable and enabled
+            try:
+                list_item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
+            except Exception:
+                pass
             self.workers_list.addItem(list_item)
 
             # Check if this was the previously selected worker
@@ -1886,7 +1893,7 @@ class MasterUI(QtWidgets.QWidget):
         if selected_row >= 0:
             self.workers_list.setCurrentRow(selected_row)
         # Ensure disconnect button state matches selection
-        QtCore.QTimer.singleShot(0, self.on_worker_selection_changed)
+        self.on_worker_selection_changed()
 
     def disconnect_selected_worker(self):
         sel = self.workers_list.currentItem()
