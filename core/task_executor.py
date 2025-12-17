@@ -115,7 +115,7 @@ class TaskExecutor:
             
             if self.max_cpu_percent < 100 or self.max_memory_mb < 8192:
                 def resource_monitor():
-                    \"\"\"Monitor and throttle CPU and memory usage\"\"\"
+                    """Monitor and throttle CPU and memory usage"""
                     while not stop_throttle.is_set():
                         try:
                             # Monitor CPU usage

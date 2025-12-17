@@ -559,7 +559,7 @@ else:
     },
     
     "system_health_check": {
-        "type": TaskType.SYSTEM_MONITORING,
+        "type": TaskType.SYSTEM_CHECK,
         "name": "System Health Check",
         "description": "Comprehensive system health monitoring including CPU, memory, disk, and network",
         "code": """
@@ -623,7 +623,7 @@ result = get_system_health()
     },
     
     "network_ping_test": {
-        "type": TaskType.NETWORK_DIAGNOSTICS,
+        "type": TaskType.NETWORK_TEST,
         "name": "Network Ping Test",
         "description": "Test network connectivity and measure latency to multiple hosts",
         "code": """
@@ -690,7 +690,7 @@ result = {
     },
     
     "text_sentiment_analysis": {
-        "type": TaskType.TEXT_PROCESSING,
+        "type": TaskType.TEXT_ANALYSIS,
         "name": "Text Sentiment Analysis",
         "description": "Analyze sentiment and extract key metrics from text",
         "code": """
@@ -751,7 +751,7 @@ result = analyze_sentiment(text)
     },
     
     "base64_encoder": {
-        "type": TaskType.ENCRYPTION,
+        "type": TaskType.CUSTOM_TASK,
         "name": "Base64 Encode/Decode",
         "description": "Encode or decode text using Base64",
         "code": """
@@ -796,7 +796,7 @@ else:
     },
     
     "hash_generator": {
-        "type": TaskType.ENCRYPTION,
+        "type": TaskType.CUSTOM_TASK,
         "name": "Generate File Hashes",
         "description": "Generate multiple hash values (MD5, SHA1, SHA256) for data",
         "code": """
@@ -1008,7 +1008,7 @@ result = mock_weather_api(city)
     },
     
     "performance_benchmark": {
-        "type": TaskType.BENCHMARK,
+        "type": TaskType.CUSTOM_TASK,
         "name": "CPU Performance Benchmark",
         "description": "Run various performance benchmarks to test CPU speed",
         "code": """
