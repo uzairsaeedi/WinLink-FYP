@@ -1,180 +1,135 @@
 # WinLink Production Packaging Guide
 
-## Overview
+This document describes the recommended, up-to-date process to produce a production-ready Windows distribution (standalone folder with `WinLink.exe`) using the repository's automated build helper `build_exe.py`.
 
-This guide explains how to package WinLink as a standalone executable for production deployment.
+**Scope**: Windows desktop production builds (PyInstaller-based). This guide assumes you're building on a Windows machine.
 
 ---
 
 ## Prerequisites
 
-### Required Software
+- Python 3.8 or newer installed and on PATH
+- Up-to-date `pip`
+- A working Visual C++ runtime on build machine (typical on dev machines)
+- Administrator rights for firewall/script testing on target machines
 
-1. **Python 3.8+** installed
-2. **All dependencies** from requirements.txt installed
-3. **PyInstaller** (auto-installed by build script)
-4. **Administrator rights** (for firewall configuration)
+Install runtime dependencies used by the project:
 
-### Verify Installation
-
-```bash
-python --version
-pip list
+```powershell
+python -m pip install -r requirements.txt
 ```
+
+Notes:
+
+- `requirements.txt` now includes `numpy`, `pywin32`, and `python-vlc` (used by the worker video player). If you will NOT bundle VLC, installing `python-vlc` is still recommended for local testing.
 
 ---
 
-## Building the Executable
+## Build (Recommended - automated)
 
-### Method 1: Automated Build (Recommended)
+1. From project root, install requirements (see above).
 
-Simply run the build script:
+2. Optionally set VLC path (only required if you want the build script to bundle VLC native files):
 
-```bash
+```powershell
+:: Set VLC_PATH to an installed VLC folder (32/64-bit as appropriate)
+setx VLC_PATH "C:\Program Files\VideoLAN\VLC"
+:: or for current session only
+set VLC_PATH=C:\"Program Files"\VideoLAN\VLC
+```
+
+3. Run the automated packaging helper:
+
+```powershell
 python build_exe.py
 ```
 
-The script will:
+What `build_exe.py` does (summary):
 
-- Clean previous builds
-- Install PyInstaller if needed
-- Create optimized .spec file
-- Build the executable
-- Create production package with all necessary files
+- Generates a PyInstaller `.spec` tailored for this project (includes `assets` and application folders)
+- Adds PyQt5 plugin folders into the spec so Qt runs correctly in the bundle
+- Adds common `hiddenimports` (matplotlib backends, numpy, vlc) to avoid common "missing module" runtime failures
+- Optionally bundles VLC native files into the distribution when `VLC_PATH` is detected or `BUNDLE_VLC` is enabled inside the script
+- Disables UPX by default to avoid runtime DLL-load issues on some Windows hosts
+- Invokes PyInstaller and builds `WinLink_Production/` folder
 
-**Output**: `WinLink_Production/` folder ready for distribution
+Output:
 
-### Method 2: Manual Build
-
-If you prefer manual control:
-
-1. **Install PyInstaller**
-
-   ```bash
-   pip install pyinstaller
-   ```
-
-2. **Create Spec File** (or use provided WinLink.spec)
-
-   ```bash
-   pyi-makespec --onedir --windowed --icon=assets/WinLink_logo.ico launch_enhanced.py
-   ```
-
-3. **Edit Spec File** - Add data files:
-
-   ```python
-   datas=[
-       ('assets', 'assets'),
-       ('core', 'core'),
-       ('master', 'master'),
-       ('worker', 'worker'),
-       ('ui', 'ui'),
-   ]
-   ```
-
-4. **Build Executable**
-   ```bash
-   pyinstaller --clean WinLink.spec
-   ```
+- `WinLink.spec` (generated)
+- `dist/` and `build/` from PyInstaller (temporary)
+- `WinLink_Production/` containing the final application folder for distribution
 
 ---
 
-## Production Package Structure
+## Forcing VLC bundling (if needed)
 
-```
-WinLink_Production/
-├── WinLink/                    # Main application folder
-│   ├── WinLink.exe            # Main executable
-│   ├── assets/                # Resources and icons
-│   ├── core/                  # Core modules
-│   ├── master/                # Master UI
-│   ├── worker/                # Worker UI
-│   ├── ui/                    # UI components
-│   ├── logs/                  # Application logs
-│   ├── data/                  # Database
-│   ├── secrets/               # Auth tokens (auto-generated)
-│   ├── ssl/                   # Certificates (auto-generated)
-│   └── [DLL files and dependencies]
-├── Start_WinLink.bat          # Easy launcher
-├── setup_firewall.bat         # Firewall configuration
-└── README.txt                 # User instructions
-```
+The packaging helper will attempt to locate VLC on the build machine and include its native DLLs under `vlc/` in the final package. To ensure VLC is bundled:
+
+- Install VLC (VideoLAN) on the build machine
+- Set `VLC_PATH` environment variable to the VLC installation directory (example above)
+- Re-run `python build_exe.py`
+
+If you prefer editing the script, `build_exe.py` contains a `BUNDLE_VLC` toggle near the top — set it to `True` to attempt bundling.
+
+Notes:
+
+- Bundling VLC increases package size substantially (do this only when necessary)
+- If you don't bundle VLC, end users must have VLC installed for the `python-vlc` playback path to work, or the app will fall back to an error dialog.
 
 ---
 
-## Batch Files in Production
+## Manual / Advanced (PyInstaller flags)
 
-### ✅ **Include These Files:**
+If you need manual control, you can run PyInstaller directly using the generated `.spec`:
 
-1. **setup_firewall.bat** - ESSENTIAL
+```powershell
+pyinstaller --clean WinLink.spec
+```
 
-   - Required for network functionality
-   - Must be run as Administrator on worker PCs
-   - Configures Windows Firewall rules
-   - **Include in production package**
+Recommended PyInstaller options when customizing:
 
-2. **Start_WinLink.bat** - RECOMMENDED
-   - Provides easy launch for non-technical users
-   - Auto-generated by build script
-   - **Include in production package**
-
-### ❌ **Exclude These Files:**
-
-1. **test_windows.bat** - Development only
-
-   - Contains testing options
-   - Not needed for end users
-   - **Exclude from production**
-
-2. **setup_windows.bat** - Development only
-   - Used for development environment setup
-   - Dependencies are already bundled in .exe
-   - **Exclude from production**
-
-### Why Exclude Development .bat Files?
-
-- **Security**: Avoid exposing development/testing features
-- **Simplicity**: Don't confuse end users with extra options
-- **Size**: Keep distribution package smaller
-- **Support**: Fewer files = fewer support issues
+- `upx=False` — recommended to avoid runtime loading issues
+- Include `datas` entries for the `assets/` folder and other non-Python files
+- Add `hiddenimports` for any modules reported missing at runtime
+- Ensure `binaries` includes any native DLLs you must ship
 
 ---
 
-## Distribution Steps
+## Test Checklist (mandatory before distribution)
 
-### 1. Build the Package
+Test on at least one clean Windows machine (no Python installed):
 
-```bash
-python build_exe.py
+- [ ] Copy `WinLink_Production/` to test machine
+- [ ] Run `Start_WinLink.bat` and verify `WinLink.exe` launches
+- [ ] Run Master and Worker roles and verify discovery and task execution
+- [ ] Test video playback on a Worker (if relevant) — if VLC was bundled, verify it loads from the `vlc/` folder
+- [ ] Run `setup_firewall.bat` on Worker and ensure network connectivity
+- [ ] Inspect `WinLink/logs/` for errors and verify rotation
+- [ ] Confirm application closes cleanly and no lingering processes remain
+
+If you encounter issues, collect the build log (PyInstaller stdout/stderr) and the runtime logs from `WinLink/logs/`.
+
+---
+
+## Common Troubleshooting Notes
+
+- "Failed to execute script" — check generated `.spec` for missing `hiddenimports` and add them.
+- Missing DLL — add the DLL to `binaries` or `datas` in the `.spec`.
+- Qt plugin errors (platform plugin not found) — ensure PyInstaller includes the Qt `platforms` plugin folder (the automated script does this).
+- Large binary size — disable VLC bundling, trim unused libs, consider `--onefile` (note: slower startup).
+- Intermittent socket errors on Windows (e.g. WinError 10038) — these are typically runtime socket lifecycle races. Reproduce with logs and include both build-time and runtime logs when filing an issue; build-time changes are unlikely to fix these without code instrumentation.
+
+---
+
+## Signing and Installer (recommended for distribution)
+
+1. Code-sign the main executable to avoid "Unknown Publisher" warnings.
+
+```powershell
+signtool sign /f certificate.pfx /p password /t http://timestamp.digicert.com "WinLink_Production\WinLink\WinLink.exe"
 ```
 
-### 2. Test the Package
-
-Before distribution, test on a clean Windows machine:
-
-- Copy `WinLink_Production/` to test machine
-- Run `Start_WinLink.bat`
-- Test Master and Worker roles
-- Verify network connectivity
-
-### 3. Create Distribution Archive
-
-```bash
-# Using PowerShell
-Compress-Archive -Path WinLink_Production -DestinationPath WinLink_v2.0.zip
-
-# Or use Windows right-click > Send to > Compressed folder
-```
-
-### 4. Create Installer (Optional)
-
-For professional deployment, create an installer using:
-
-- **Inno Setup** (Free, recommended)
-- **NSIS** (Free)
-- **Advanced Installer** (Commercial)
-
-Example with Inno Setup:
+2. Create an installer using Inno Setup or NSIS. Example Inno Setup snippet (adapt `Source`):
 
 ```iss
 [Setup]
@@ -189,215 +144,44 @@ Source: "WinLink_Production\*"; DestDir: "{app}"; Flags: recursesubdirs
 
 [Icons]
 Name: "{commondesktop}\WinLink"; Filename: "{app}\Start_WinLink.bat"
-Name: "{group}\WinLink"; Filename: "{app}\Start_WinLink.bat"
 ```
 
----
-
-## Deployment Scenarios
-
-### Scenario 1: Small Office (2-5 PCs)
-
-**Distribution Method**: Shared folder or USB drive
-
-1. Share `WinLink_v2.0.zip` on network
-2. Users extract to `C:\Program Files\WinLink\`
-3. Run `setup_firewall.bat` as Admin on worker PCs
-4. Launch via `Start_WinLink.bat`
-
-### Scenario 2: Large Organization (10+ PCs)
-
-**Distribution Method**: Installer + Group Policy
-
-1. Create installer using Inno Setup
-2. Deploy via Group Policy or SCCM
-3. Firewall rules pushed via Group Policy
-4. Desktop shortcuts auto-created
-
-### Scenario 3: Cloud/Remote Workers
-
-**Distribution Method**: Download portal
-
-1. Host installer on secure download portal
-2. Provide installation guide
-3. VPN access for network connectivity
-4. Remote support for firewall setup
+Signing tip: sign before creating the installer so both the exe and installer can be signed.
 
 ---
 
-## Testing Checklist
+## Release Checklist
 
-Before distributing, verify:
-
-- [ ] Executable runs without Python installed
-- [ ] All UI screens display correctly
-- [ ] Master can discover workers
-- [ ] Workers can execute tasks
-- [ ] Firewall rules work correctly
-- [ ] Logs are written properly
-- [ ] Database is created/accessed
-- [ ] Icons display in taskbar/tray
-- [ ] Application closes cleanly
-- [ ] No console window appears (windowed mode)
-- [ ] Certificates auto-generate on first run
-- [ ] Auth tokens are created properly
+- [ ] Build artifacts present in `WinLink_Production/`
+- [ ] Tested on clean Windows machine(s)
+- [ ] `Start_WinLink.bat` and `setup_firewall.bat` included and verified
+- [ ] Optional VLC bundling verified or clear instructions provided to end users
+- [ ] Executable code-signed (recommended)
+- [ ] Installer created and optionally signed
 
 ---
 
-## Troubleshooting Production Build
+## Quick Commands (copy-paste)
 
-### Issue: "Failed to execute script"
-
-**Solution**: Check hidden imports in .spec file
-
-```python
-hiddenimports=['missing_module']
-```
-
-### Issue: Missing DLL errors
-
-**Solution**: Add binary to .spec file
-
-```python
-binaries=[('path/to/dll', '.')]
-```
-
-### Issue: Icon not showing
-
-**Solution**: Ensure WinLink_logo.ico exists in assets/
-
-```python
-icon='assets/WinLink_logo.ico'
-```
-
-### Issue: Large executable size
-
-**Solutions**:
-
-- Use `--onefile` instead of `--onedir` (slower startup)
-- Exclude unnecessary modules in .spec
-- Enable UPX compression: `upx=True`
-
-### Issue: Slow startup
-
-**Solutions**:
-
-- Use `--onedir` instead of `--onefile`
-- Disable UPX: `upx=False`
-- Reduce number of imports
-
----
-
-## File Size Optimization
-
-### Current Size (Typical)
-
-- Development: ~500 MB (with all dependencies)
-- Production .exe: ~150-200 MB (optimized)
-- Compressed .zip: ~60-80 MB
-
-### Optimization Tips
-
-1. **Exclude unused modules** in .spec
-2. **Use UPX compression** (enabled by default)
-3. **Remove debug symbols** (`strip=False` → `True`)
-4. **Exclude large libraries** (matplotlib, pandas if not used)
-
----
-
-## Security Considerations
-
-### Production Checklist
-
-- [ ] Remove debug/test code
-- [ ] Disable verbose logging
-- [ ] Use secure random tokens
-- [ ] Enable TLS encryption
-- [ ] Validate all inputs
-- [ ] Sign executable (optional but recommended)
-
-### Code Signing (Recommended)
-
-Benefits:
-
-- Prevents "Unknown Publisher" warnings
-- Builds user trust
-- Required by some organizations
-
-Tools:
-
-- **SignTool** (Windows SDK)
-- **Code signing certificate** (from CA like DigiCert)
-
-```bash
-signtool sign /f certificate.pfx /p password /t http://timestamp.digicert.com WinLink.exe
-```
-
----
-
-## Version Management
-
-### Versioning Strategy
-
-Use semantic versioning: `MAJOR.MINOR.PATCH`
-
-- **MAJOR**: Breaking changes
-- **MINOR**: New features
-- **PATCH**: Bug fixes
-
-### Update Mechanism
-
-Consider implementing:
-
-1. Auto-update checker
-2. Download notification
-3. In-app update installer
-
----
-
-## Support and Maintenance
-
-### Log Collection
-
-Production logs location: `WinLink/logs/`
-
-- Include in bug reports
-- Monitor for errors
-- Rotate logs periodically
-
-### Bug Reporting
-
-Provide users with:
-
-- Log file location
-- Screenshot tool
-- Contact information
-- Bug report template
-
----
-
-## Quick Reference
-
-### Build Commands
-
-```bash
-# Automated build (recommended)
+```powershell
+python -m pip install -r requirements.txt
+:: Optionally set VLC path if you want it bundled
+set VLC_PATH=C:\"Program Files"\VideoLAN\VLC
 python build_exe.py
 
-# Manual build
-pyinstaller --clean WinLink.spec
-
-# Clean build artifacts
-python build_exe.py  # Includes auto-clean
+# After build: compress or make installer
+Compress-Archive -Path WinLink_Production -DestinationPath WinLink_v2.0.zip
 ```
 
-### Distribution Files Checklist
+---
 
-- [x] WinLink.exe (main executable)
-- [x] Start_WinLink.bat (launcher)
-- [x] setup_firewall.bat (firewall config)
-- [x] README.txt (user guide)
-- [x] assets/ (icons and resources)
+If you'd like, I can also:
+
+- add a short `PACKAGING_CHECKLIST.md` that your CI or release engineer can follow,
+- or add a small `build_test.ps1` that runs smoke tests against the produced `WinLink_Production` folder.
+
+End of packaging guide.
+
 - [ ] License.txt (if applicable)
 
 ### End User Instructions

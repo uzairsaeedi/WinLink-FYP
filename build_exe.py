@@ -34,41 +34,78 @@ def check_pyinstaller():
 
 def create_spec_file():
     """Create PyInstaller spec file"""
-    spec_content = """# -*- mode: python ; coding: utf-8 -*-
+    # Create a spec that collects assets, PyQt5 plugins (platforms & imageformats),
+    # and includes hiddenimports for matplotlib and numpy. UPX is disabled by default
+    # because UPX may not be installed on the build machine.
+    # Optionally bundle VLC native files if available on the build machine
+    BUNDLE_VLC = True
+
+    def find_vlc():
+        # Common Windows VLC locations
+        candidates = [
+            r"C:\Program Files\VideoLAN\VLC",
+            r"C:\Program Files (x86)\VideoLAN\VLC",
+        ]
+        # Also check environment variable (if user set VLC_PATH)
+        env_vlc = os.environ.get('VLC_PATH')
+        if env_vlc:
+            candidates.insert(0, env_vlc)
+
+        for p in candidates:
+            if os.path.isdir(p):
+                return p
+        return None
+
+    vlc_path = find_vlc() if BUNDLE_VLC else None
+    if vlc_path:
+        print(f"Found VLC installation at: {vlc_path} — bundling into package")
+    else:
+        if BUNDLE_VLC:
+            print("VLC not found on build machine — skipping VLC bundling")
+
+    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+
+import os
+import PyQt5
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files, Tree
 
 block_cipher = None
+
+# Location of PyQt5 plugins (platforms, imageformats, etc.)
+pyqt_plugin_dir = os.path.join(PyQt5.__path__[0], 'Qt', 'plugins')
+
+datas = [
+    ('README.md', '.'),
+    ('requirements.txt', '.'),
+]
+
+# Include assets and PyQt5 plugins
+datas = datas + Tree('assets', prefix='assets') + Tree(pyqt_plugin_dir, prefix=os.path.join('PyQt5', 'Qt', 'plugins'))
+
+# Optionally include VLC native files (copy entire folder under 'vlc/')
+{ 'vlc_tree = "datas = datas + Tree(%r, prefix=\'vlc\')" % vlc_path if vlc_path else '\n' }
+
+# Hidden imports to help PyInstaller collect dynamic backends
+hiddenimports = [
+    'PyQt5.QtCore',
+    'PyQt5.QtGui',
+    'PyQt5.QtWidgets',
+    'matplotlib.backends.backend_qt5agg',
+    'matplotlib.backends.backend_agg',
+    'numpy',
+    'vlc',
+]
 
 a = Analysis(
     ['launch_enhanced.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('assets', 'assets'),
-        ('core', 'core'),
-        ('master', 'master'),
-        ('worker', 'worker'),
-        ('ui', 'ui'),
-        ('requirements.txt', '.'),
-        ('README.md', '.'),
-    ],
-    hiddenimports=[
-        'PyQt5',
-        'PyQt5.QtCore',
-        'PyQt5.QtGui',
-        'PyQt5.QtWidgets',
-        'psutil',
-        'socket',
-        'threading',
-        'json',
-        'sqlite3',
-        'ssl',
-        'cryptography',
-        'OpenSSL',
-    ],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'numpy', 'pandas'],
+    excludes=['tkinter'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -86,7 +123,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -102,7 +139,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='WinLink',
 )
