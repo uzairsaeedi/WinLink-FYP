@@ -890,7 +890,8 @@ class MasterUI(QtWidgets.QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        # Make worker column tighter and result column resize to contents
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.Stretch)
@@ -1794,26 +1795,32 @@ class MasterUI(QtWidgets.QWidget):
         
         if reply == QtWidgets.QMessageBox.Yes:
             try:
+                # Perform network disconnect
                 self.network.disconnect_worker(worker_id)
                 print(f"[MASTER] 🔌 Disconnected from worker: {ip_port}")
 
+                # Clear cached resources
                 with self.worker_resources_lock:
                     self.worker_resources.pop(worker_id, None)
 
+                # Requeue any tasks that were assigned to this worker
+                try:
+                    self.task_manager.requeue_tasks_for_worker(worker_id)
+                except Exception:
+                    pass
+
+                # Refresh UI
                 QtCore.QTimer.singleShot(100, self.refresh_workers)
-                QtWidgets.QMessageBox.information(self, "Success", f"Disconnected from {ip_port}")
+                self.refresh_workers_async()
+                self.refresh_discovered_workers()
+                self.update_resource_display()
+                self.refresh_task_table_async()
+
+                QtWidgets.QMessageBox.information(self, "Disconnected", f"Successfully disconnected from {ip_port}")
+                self.disconnect_btn.setEnabled(False)
             except Exception as e:
                 QtWidgets.QMessageBox.critical(self, "Error", f"Failed to disconnect: {str(e)}")
                 print(f"[MASTER] ❌ Error disconnecting: {e}")
-
-            self.refresh_workers_async()
-            self.refresh_discovered_workers()
-            self.update_resource_display()
-
-            QtWidgets.QMessageBox.information(self, "Disconnected", 
-                f"Successfully disconnected from {ip_port}")
-
-            self.disconnect_btn.setEnabled(False)
 
     def on_task_type_changed(self):
         """Update template dropdown based on selected task type"""
@@ -2082,8 +2089,14 @@ class MasterUI(QtWidgets.QWidget):
                 prog_val = 0
             progress_widget.setRange(0, 100)
             progress_widget.setValue(max(0, min(100, prog_val)))
+            # Show percentage text inside the progress bar (was hidden previously)
             progress_widget.setTextVisible(True)
-            progress_widget.setFormat(f"{progress_widget.value()}%")
+            progress_widget.setToolTip(f"{progress_widget.value()}%")
+            # Use Qt's %p placeholder so the displayed text updates correctly
+            try:
+                progress_widget.setFormat("%p%")
+            except Exception:
+                progress_widget.setFormat(f"{progress_widget.value()}%")
             progress_widget.setAlignment(QtCore.Qt.AlignCenter)
             self.tasks_table.setCellWidget(row, 4, progress_widget)
 

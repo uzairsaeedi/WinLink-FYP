@@ -178,6 +178,22 @@ class TaskManager:
             if not task:
                 return
             task.progress = max(0, min(100, int(progress)))
+
+    def requeue_tasks_for_worker(self, worker_id: str):
+        """Reset tasks that were assigned to a worker back to pending so they can be reassigned.
+
+        This is called when a worker disconnects unexpectedly.
+        """
+        with self.lock:
+            for task in self.tasks.values():
+                if task.worker_id == worker_id and task.status in (TaskStatus.RUNNING, TaskStatus.PENDING):
+                    task.worker_id = None
+                    task.status = TaskStatus.PENDING
+                    task.started_at = None
+                    task.progress = 0
+                    # Ensure task is in the queue for scheduling
+                    if task.id not in self.task_queue:
+                        self.task_queue.append(task.id)
     
     def get_task(self, task_id: str) -> Optional[Task]:
         """Get a task by its ID"""

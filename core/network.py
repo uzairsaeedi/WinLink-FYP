@@ -412,7 +412,15 @@ class MasterNetwork:
             probe_msg = json.dumps({'type': 'master_probe', 'data': {'timestamp': time.time()}}).encode()
             while self.running:
                 try:
-                    probe_sock.sendto(probe_msg, ('<broadcast>', self.discovery_port))
+                    # Send to common broadcast targets; some networks respond to 255.255.255.255 better
+                    try:
+                        probe_sock.sendto(probe_msg, ('<broadcast>', self.discovery_port))
+                    except Exception:
+                        pass
+                    try:
+                        probe_sock.sendto(probe_msg, ('255.255.255.255', self.discovery_port))
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 time.sleep(3)

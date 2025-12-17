@@ -80,8 +80,11 @@ class TaskExecutor:
             }
         }
         
-        # Allow safe imports
-        safe_modules = ['math', 'statistics', 'random', 'datetime', 'json', 're']
+        # Allow safe imports (extend with commonly used system modules for tasks)
+        safe_modules = [
+            'math', 'statistics', 'random', 'datetime', 'json', 're',
+            'psutil', 'subprocess', 'platform', 'socket', 'time', 'os', 'hashlib', 'base64'
+        ]
         for module in safe_modules:
             try:
                 task_namespace[module] = __import__(module)
@@ -162,21 +165,37 @@ class TaskExecutor:
                 with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
                     exec(task_code, task_namespace)
             except Exception as e:
-                # If exec failed due to missing __import__, retry once with a fuller __import__ available
-                msg = str(e)
-                if "__import__" in msg or "__import__ not found" in msg:
+                # If exec failed due to missing __import__ or disallowed imports, retry once
+                msg = str(e).lower()
+                retry_conditions = [
+                    "__import__",
+                    "__import__ not found",
+                    "import of module",
+                    "not allowed in task environment",
+                    "module not found",
+                ]
+                if any(cond in msg for cond in retry_conditions):
                     try:
-                        # Provide the real import as a fallback to improve compatibility
+                        # First try to inject any safe modules already present
+                        for module in safe_modules:
+                            if module not in task_namespace:
+                                try:
+                                    task_namespace[module] = __import__(module)
+                                except Exception:
+                                    pass
+
+                        # As a last resort allow the real __import__ to improve compatibility
                         try:
                             import builtins as _builtins
                             task_namespace['__builtins__']['__import__'] = _builtins.__import__
                         except Exception:
                             pass
+
                         # Retry execution once
                         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
                             exec(task_code, task_namespace)
                     except Exception:
-                        # Re-raise original exception handling below
+                        # If retry fails, fall through to error handling below
                         pass
                 else:
                     raise
