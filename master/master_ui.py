@@ -1231,7 +1231,10 @@ class MasterUI(QtWidgets.QWidget):
             self.resource_ax.spines['top'].set_visible(False)
             self.resource_ax.spines['right'].set_visible(False)
             
-            self.resource_figure.tight_layout()
+            try:
+                self.resource_figure.tight_layout()
+            except Exception:
+                pass
             self.resource_canvas.draw()
             
         except Exception as e:

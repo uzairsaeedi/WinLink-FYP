@@ -396,8 +396,17 @@ class MasterNetwork:
         def listen():
             try:
                 self.discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                self.discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.discovery_socket.bind(('', self.discovery_port))
+                # Allow receiving broadcast packets
+                try:
+                    self.discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                except Exception:
+                    pass
+                try:
+                    self.discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                except Exception:
+                    pass
+                # Bind to all interfaces on the discovery port
+                self.discovery_socket.bind(('0.0.0.0', self.discovery_port))
                 self.discovery_socket.settimeout(1.0)
                 
                 print(f"[MASTER] Discovery listener started on port {self.discovery_port}")

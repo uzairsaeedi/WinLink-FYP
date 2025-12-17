@@ -55,6 +55,7 @@ class WorkerUI(QWidget):
         self.task_executor = TaskExecutor()
         self.current_tasks = {}
         self.tasks_lock = threading.Lock()
+        self.total_tasks_completed = 0
         self.monitoring_active = True
         self.last_output_text = "No task output yet."
         self.task_log_initialized = False  # Track if we've written first real log
@@ -1338,27 +1339,26 @@ class WorkerUI(QWidget):
         
         # Check if video player is available
         if not VIDEO_PLAYER_AVAILABLE:
-            error_msg = "Video player not available. VLC is not installed. Please install VLC media player and python-vlc package."
-            self.log(f"   ⚠️  Warning: {error_msg}")
-            
-            # Show error message to user
-            QMessageBox.warning(
-                self,
-                "Video Player Not Available",
-                f"{error_msg}\n\n"
-                f"To enable video playback:\n"
-                f"1. Install VLC Media Player from https://www.videolan.org/\n"
-                f"2. Run: pip install python-vlc\n"
-                f"3. Restart the application\n\n"
-                f"For now, opening video URL in browser..."
-            )
-            
-            # Open in browser as fallback
+            # Attempt to open with default system handler (Windows Movies & TV or default app)
+            self.log("   ⚠️  VLC not available: trying default system player...")
+            opened = False
             try:
-                import webbrowser
-                webbrowser.open(video_url)
-                self.log(f"   🌐 Opened video URL in browser as fallback")
-                
+                # On Windows, os.startfile will use the default handler for the URL
+                import os
+                if sys.platform == 'win32':
+                    try:
+                        os.startfile(video_url)
+                        opened = True
+                        self.log(f"   ▶️ Opened with default system handler: {video_url}")
+                    except Exception:
+                        opened = False
+                if not opened:
+                    # Fallback to opening in browser
+                    import webbrowser
+                    webbrowser.open(video_url)
+                    opened = True
+                    self.log(f"   🌐 Opened video URL in browser as fallback")
+
                 # Send success response
                 with self.tasks_lock:
                     self.current_tasks[task_id] = {
@@ -1367,30 +1367,33 @@ class WorkerUI(QWidget):
                         "started_at": time.time(),
                         "completed_at": time.time(),
                         "memory_used_mb": 0,
-                        "output": f"Video opened in browser (VLC not available): {video_title}\nURL: {video_url}",
+                        "output": f"Video opened by default handler: {video_title}\nURL: {video_url}",
                         "name": task_name
                     }
-                
+
                 result_payload = {
                     "success": True,
                     "result": {
-                        "status": "opened_in_browser",
+                        "status": "opened_default",
                         "video_url": video_url,
                         "title": video_title,
-                        "note": "VLC not available, opened in browser"
+                        "note": "Opened with system default handler"
                     },
                     "error": None,
-                    "stdout": f"Opened in browser: {video_url}",
+                    "stdout": f"Opened with default handler: {video_url}",
                     "stderr": None,
                     "execution_time": 0.1,
                     "memory_used": 0
                 }
-                self.network.send_task_result(task_id, result_payload)
-                
+                try:
+                    self.network.send_task_result(task_id, result_payload)
+                except Exception:
+                    pass
+
             except Exception as e:
-                self.log(f"   ❌ Failed to open in browser: {e}")
+                self.log(f"   ❌ Failed to open video: {e}")
                 self._send_error_to_master(task_id, str(e))
-            
+
             QTimer.singleShot(0, self._refresh_tasks_display)
             return
         
@@ -1504,6 +1507,13 @@ class WorkerUI(QWidget):
             thread.wait(100)  # Wait max 100ms for thread to finish
             del self.active_task_threads[task_id]
         
+        # Increment cumulative completed counter for analytics (successful tasks)
+        try:
+            if isinstance(result, dict) and result.get('success'):
+                self.total_tasks_completed = getattr(self, 'total_tasks_completed', 0) + 1
+        except Exception:
+            pass
+
         # Schedule cleanup
         QTimer.singleShot(0, lambda: self._schedule_task_cleanup(task_id))
 
@@ -1933,10 +1943,8 @@ class WorkerUI(QWidget):
             avg_cpu = sum(self.cpu_history) / len(self.cpu_history) if self.cpu_history else 0
             avg_mem = sum(self.mem_history) / len(self.mem_history) if self.mem_history else 0
             
-            # Count completed tasks
-            with self.tasks_lock:
-                completed_count = sum(1 for meta in self.current_tasks.values() 
-                                    if meta.get("status") in ["done", "completed"])
+            # Count completed tasks (use cumulative counter so analytics persist)
+            completed_count = getattr(self, 'total_tasks_completed', 0)
             
             # Update metric cards using the stored value labels
             self.metrics_values["tasks_completed"].setText(str(completed_count))
