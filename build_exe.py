@@ -6,6 +6,7 @@ import os
 import sys
 import shutil
 import subprocess
+import textwrap
 
 def clean_build():
     """Clean previous build artifacts"""
@@ -63,88 +64,117 @@ def create_spec_file():
         if BUNDLE_VLC:
             print("VLC not found on build machine — skipping VLC bundling")
 
-    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+    # Prepare optional VLC Tree line for the spec file
+    if vlc_path:
+        vlc_tree = "datas = datas + Tree(%r, prefix='vlc')\n" % vlc_path
+    else:
+        vlc_tree = "\n"
 
-import os
-import PyQt5
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files, Tree
+    # Build spec content as a list of lines to avoid f-string/dedent pitfalls
+    spec_lines = [
+        "# -*- mode: python ; coding: utf-8 -*-",
+        "",
+        "import os",
+        "import PyQt5",
+        "from PyInstaller.utils.hooks import collect_submodules, collect_data_files",
+        "",
+        "block_cipher = None",
+        "",
+        "# Location of PyQt5 plugins (platforms, imageformats, etc.)",
+        "pyqt_plugin_dir = os.path.join(PyQt5.__path__[0], 'Qt', 'plugins')",
+        "",
+        "datas = [",
+        "    ('README.md', '.'),",
+        "    ('requirements.txt', '.'),",
+        "]",
+        "",
+        "# Include assets and PyQt5 plugins",
+        "# `Tree` helper for bundling folders (implemented here to avoid PyInstaller API changes)",
+        "def Tree(source, prefix=None):",
+        "    result = []",
+        "    for root, dirs, files in __import__('os').walk(source):",
+        "        for fn in files:",
+        "            src = __import__('os').path.join(root, fn)",
+        "            rel = __import__('os').path.relpath(root, source)",
+        "            if rel == '.':",
+        "                dest_dir = prefix if prefix else ''",
+        "            else:",
+        "                dest_dir = __import__('os').path.join(prefix if prefix else '', rel)",
+        "            result.append((src, dest_dir))",
+        "    return result",
+        "",
+        "datas = datas + Tree('assets', prefix='assets') + Tree(pyqt_plugin_dir, prefix=__import__('os').path.join('PyQt5', 'Qt', 'plugins'))",
+        "",
+        "# Optionally include VLC native files (copy entire folder under 'vlc/')",
+    ]
 
-block_cipher = None
+    # Insert vlc_tree lines (may be just a newline)
+    spec_lines.extend(vlc_tree.splitlines())
+    spec_lines.append("")
 
-# Location of PyQt5 plugins (platforms, imageformats, etc.)
-pyqt_plugin_dir = os.path.join(PyQt5.__path__[0], 'Qt', 'plugins')
+    spec_lines.extend([
+        "# Hidden imports to help PyInstaller collect dynamic backends",
+        "hiddenimports = [",
+        "    'PyQt5.QtCore',",
+        "    'PyQt5.QtGui',",
+        "    'PyQt5.QtWidgets',",
+        "    'matplotlib.backends.backend_qt5agg',",
+        "    'matplotlib.backends.backend_agg',",
+        "    'numpy',",
+        "    'vlc',",
+        "]",
+        "",
+        "a = Analysis(",
+        "    ['launch_enhanced.py'],",
+        "    pathex=[],",
+        "    binaries=[],",
+        "    datas=datas,",
+        "    hiddenimports=hiddenimports,",
+        "    hookspath=[],",
+        "    hooksconfig={},",
+        "    runtime_hooks=[],",
+        "    excludes=['tkinter'],",
+        "    win_no_prefer_redirects=False,",
+        "    win_private_assemblies=False,",
+        "    cipher=block_cipher,",
+        "    noarchive=False,",
+        ")",
+        "",
+        "pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)",
+        "",
+        "exe = EXE(",
+        "    pyz,",
+        "    a.scripts,",
+        "    [],",
+        "    exclude_binaries=True,",
+        "    name='WinLink',",
+        "    debug=False,",
+        "    bootloader_ignore_signals=False,",
+        "    strip=False,",
+        "    upx=False,",
+        "    console=False,",
+        "    disable_windowed_traceback=False,",
+        "    argv_emulation=False,",
+        "    target_arch=None,",
+        "    codesign_identity=None,",
+        "    entitlements_file=None,",
+        "    icon='assets/WinLink_logo.ico',",
+        ")",
+        "",
+        "coll = COLLECT(",
+        "    exe,",
+        "    a.binaries,",
+        "    a.zipfiles,",
+        "    a.datas,",
+        "    strip=False,",
+        "    upx=False,",
+        "    upx_exclude=[],",
+        "    name='WinLink',",
+        ")",
+    ])
 
-datas = [
-    ('README.md', '.'),
-    ('requirements.txt', '.'),
-]
+    spec_content = "\n".join(spec_lines) + "\n"
 
-# Include assets and PyQt5 plugins
-datas = datas + Tree('assets', prefix='assets') + Tree(pyqt_plugin_dir, prefix=os.path.join('PyQt5', 'Qt', 'plugins'))
-
-# Optionally include VLC native files (copy entire folder under 'vlc/')
-{ 'vlc_tree = "datas = datas + Tree(%r, prefix=\'vlc\')" % vlc_path if vlc_path else '\n' }
-
-# Hidden imports to help PyInstaller collect dynamic backends
-hiddenimports = [
-    'PyQt5.QtCore',
-    'PyQt5.QtGui',
-    'PyQt5.QtWidgets',
-    'matplotlib.backends.backend_qt5agg',
-    'matplotlib.backends.backend_agg',
-    'numpy',
-    'vlc',
-]
-
-a = Analysis(
-    ['launch_enhanced.py'],
-    pathex=[],
-    binaries=[],
-    datas=datas,
-    hiddenimports=hiddenimports,
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=['tkinter'],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='WinLink',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon='assets/WinLink_logo.ico',
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    name='WinLink',
-)
-"""
-    
     with open('WinLink.spec', 'w') as f:
         f.write(spec_content)
     print("Created WinLink.spec file")
