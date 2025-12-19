@@ -36,7 +36,7 @@ function Hero() {
           <div className="hero-actions">
             <button className="btn btn-primary" onClick={scrollToDownload}>
               <FiDownload />
-              Download Now
+              Download For Windows
             </button>
             <button className="btn btn-secondary" onClick={() => {
               const element = document.getElementById('features')
