@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react'
 // - For this repo, the site is served from /WinLink-FYP/
 export default defineConfig({
   plugins: [react()],
-  base: '/WinLink-FYP/',
+  base: '/',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
