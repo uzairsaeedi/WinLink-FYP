@@ -6,8 +6,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(16px, 2.5vw, 40px);
-  margin-bottom: clamp(24px, 6vw, 80px);
+  gap: 40px;
+  margin-bottom: 80px;
   flex-wrap: wrap;
 }
 
@@ -16,11 +16,11 @@
 }
 
 .arch-node {
-  padding: clamp(16px, 3vw, 40px);
+  padding: 40px;
   text-align: center;
   min-width: 280px;
-  flex: 0 0 clamp(240px, 35vw, 420px);
-  max-width: clamp(280px, 50vw, 460px);
+  flex: 0 0 420px;
+  max-width: 460px;
   position: relative;
 }
 
@@ -44,10 +44,10 @@
 .arch-node.master::after {
   content: '';
   position: absolute;
-  right: -1.6rem;
+  right: -26px;
   top: 50%;
   transform: translateY(-50%);
-  width: clamp(32px, 5vw, 48px);
+  width: 48px;
   height: 1px;
   background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.04));
 }
@@ -59,10 +59,10 @@
 .arch-node.worker::after {
   content: '';
   position: absolute;
-  left: -1.6rem;
+  left: -26px;
   top: 50%;
   transform: translateY(-50%);
-  width: clamp(32px, 5vw, 48px);
+  width: 48px;
   height: 1px;
   background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.04));
 }
@@ -81,21 +81,21 @@
 }
 
 .node-icon {
-  width: clamp(48px, 8vw, 80px);
-  height: clamp(48px, 8vw, 80px);
-  margin: 0 auto clamp(8px, 2.5vw, 20px);
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  font-size: clamp(20px, 4vw, 40px);
+  font-size: 40px;
   background: linear-gradient(135deg, var(--accent-blue-10) 0%, var(--accent-blue-20) 100%);
   color: var(--accent-blue);
 }
 
 .arch-node h3 {
-  font-size: clamp(18px, 2.2vw, 24px);
-  margin-bottom: clamp(8px, 2.5vw, 20px);
+  font-size: 24px;
+  margin-bottom: 20px;
   color: var(--text-primary);
 }
 
@@ -108,7 +108,7 @@
   padding: 8px 0;
   color: var(--text-secondary);
   position: relative;
-  padding-left: clamp(12px, 2.5vw, 24px);
+  padding-left: 24px;
 }
 
 .arch-node ul li::before {
@@ -124,28 +124,28 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(6px, 1.5vw, 8px);
+  gap: 8px;
   color: var(--accent-blue);
-  font-size: clamp(14px, 1.4vw, 16px);
-  flex: 0 0 clamp(80px, 12vw, 120px);
+  font-size: 16px;
+  flex: 0 0 120px;
   z-index: 5;
 }
 
 .arch-arrow span {
-  font-size: clamp(13px, 1.2vw, 15px);
+  font-size: 15px;
   color: var(--text-secondary);
   writing-mode: horizontal-tb;
   white-space: nowrap;
   background: var(--panel-bg);
-  padding: clamp(6px, 1.6vw, 8px) clamp(10px, 2.5vw, 14px);
+  padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.02);
   box-shadow: 0 8px 30px rgba(0,0,0,0.45);
 }
 
 .arrow-icon {
-  width: clamp(22px, 4vw, 34px);
-  height: clamp(22px, 4vw, 34px);
+  width: 34px;
+  height: 34px;
   color: var(--accent-blue);
   display: inline-flex;
   align-items: center;
@@ -178,38 +178,38 @@
 .workflow-steps {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: clamp(12px, 3vw, 24px);
-  margin-top: clamp(20px, 5vw, 60px);
+  gap: 24px;
+  margin-top: 60px;
 }
 
 .step {
-  padding: clamp(16px, 3.5vw, 32px);
+  padding: 32px;
   text-align: center;
   position: relative;
 }
 
 .step-number {
-  width: clamp(36px, 6vw, 50px);
-  height: clamp(36px, 6vw, 50px);
-  margin: 0 auto clamp(8px, 2.5vw, 20px);
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue-40) 100%);
   color: white;
-  font-size: clamp(18px, 3vw, 24px);
+  font-size: 24px;
   font-weight: 700;
 }
 
 .step h4 {
-  font-size: clamp(16px, 2.5vw, 20px);
-  margin-bottom: clamp(8px, 2vw, 12px);
+  font-size: 20px;
+  margin-bottom: 12px;
   color: var(--text-primary);
 }
 
 .step p {
-  font-size: clamp(13px, 1.6vw, 15px);
+  font-size: 15px;
   line-height: 1.6;
   color: var(--text-secondary);
 }

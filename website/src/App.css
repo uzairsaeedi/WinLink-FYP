@@ -123,9 +123,9 @@ section {
 
 /* Button Styles */
 .btn {
-  padding: 12px 28px;
+  padding: 14px 32px;
   border-radius: 12px;
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;

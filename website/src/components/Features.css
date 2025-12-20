@@ -6,11 +6,11 @@
 .features-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: clamp(12px, 3vw, 24px);
+  gap: 24px;
 }
 
 .feature-card {
-  padding: clamp(16px, 3.5vw, 32px);
+  padding: 32px;
   text-align: center;
   animation: fadeInUp 0.8s ease-out both;
   cursor: default;
@@ -45,15 +45,15 @@
 }
 
 .feature-icon {
-  width: clamp(44px, 8vw, 64px);
-  height: clamp(44px, 8vw, 64px);
-  margin: 0 auto clamp(8px, 2.5vw, 20px);
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 16px;
   background: linear-gradient(135deg, var(--accent-blue-10) 0%, var(--accent-blue-20) 100%);
-  font-size: clamp(18px, 4vw, 32px);
+  font-size: 32px;
   color: var(--accent-blue);
   transition: all 0.3s ease;
 }
@@ -64,14 +64,14 @@
 }
 
 .feature-title {
-  font-size: clamp(16px, 2.5vw, 20px);
+  font-size: 20px;
   font-weight: 700;
-  margin-bottom: clamp(8px, 2.5vw, 12px);
+  margin-bottom: 12px;
   color: var(--text-primary);
 }
 
 .feature-description {
-  font-size: clamp(13px, 1.6vw, 15px);
+  font-size: 15px;
   line-height: 1.6;
   color: var(--text-secondary);
 }
@@ -79,10 +79,10 @@
 @media (max-width: 768px) {
   .features-grid {
     grid-template-columns: 1fr;
-    gap: clamp(8px, 2.5vw, 16px);
+    gap: 16px;
   }
 
   .feature-card {
-    padding: clamp(12px, 3.5vw, 24px);
+    padding: 24px;
   }
 }
