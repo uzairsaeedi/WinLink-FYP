@@ -187,3 +187,64 @@ button {
     padding: 0 15px;
   }
 }
+
+/* Responsive / Fluid typography and layout (non-destructive) */
+html {
+  /* keep base readable on small screens, allow slight scaling on large */
+  font-size: clamp(15px, 1.0vw + 12px, 18px);
+}
+
+/* Ensure images and svgs scale */
+img, svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Scale down the page container on narrower viewports for better rhythm */
+@media (max-width: 1200px) {
+  .container { max-width: 980px; }
+}
+
+@media (max-width: 992px) {
+  .container { max-width: 720px; }
+}
+
+@media (max-width: 768px) {
+  .container { max-width: 100%; padding: 0 18px; }
+}
+
+/* Headings: use clamped sizes so existing styles remain but are responsive */
+.section-header h2 {
+  font-size: clamp(28px, 3.8vw, 42px);
+}
+
+.section-header p {
+  font-size: clamp(14px, 1.6vw, 18px);
+}
+
+/* Hero title is large; scale it down progressively */
+.hero-title { font-size: clamp(36px, 6.5vw, 64px); }
+.hero-description { font-size: clamp(15px, 2.2vw, 20px); }
+
+/* Buttons: reduce padding / font-size on small screens */
+.btn { padding: clamp(10px, 1.6vw, 14px) clamp(16px, 2.8vw, 32px); font-size: clamp(14px, 1.6vw, 16px); }
+
+/* Architecture nodes: allow them to shrink and wrap cleanly */
+@media (max-width: 1100px) {
+  .architecture-diagram { gap: 24px; }
+  .arch-node { flex: 1 1 46%; max-width: 46%; }
+}
+
+@media (max-width: 768px) {
+  .architecture-diagram { flex-direction: column; gap: 28px; }
+  .arch-node { flex: 1 1 100%; max-width: 100%; padding: 28px; }
+}
+
+/* Misc small-screen tweaks to preserve visual rhythm */
+@media (max-width: 480px) {
+  .hero-title { font-size: 32px; }
+  .section-header h2 { font-size: 26px; }
+  .section-header p { font-size: 14px; }
+  .btn { width: 100%; justify-content: center; }
+}

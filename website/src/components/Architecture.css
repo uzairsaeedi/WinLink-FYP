@@ -170,9 +170,32 @@
   }
 
   .arch-arrow {
-    transform: rotate(90deg);
+    flex-direction: column;
+    align-items: center;
     gap: 10px;
   }
+
+  .arch-arrow span {
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    transform: none;
+    transform-origin: center;
+    display: inline-block;
+    white-space: nowrap;
+    padding: 8px 14px;
+    max-width: none;
+    line-height: 1;
+  }
+
+  /* On mobile, don't rotate the icon globally. We'll swap icons instead. */
+  .arrow-icon {
+    transform: none;
+    margin-top: 0;
+  }
+
+  /* show/hide appropriate arrow directions */
+  .arrow-right { display: inline-flex; }
+  .arrow-down { display: none; }
 }
 
 .workflow-steps {
@@ -220,12 +243,30 @@
   }
 
   .arch-arrow {
-    transform: rotate(90deg);
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
   }
 
   .arch-arrow span {
-    writing-mode: vertical-rl;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    transform: none;
+    transform-origin: center;
+    display: inline-block;
+    white-space: nowrap;
+    padding: 8px 14px;
+    max-width: none;
+    line-height: 1;
   }
+
+  .arrow-icon {
+    transform: none;
+    margin-top: 0;
+  }
+
+  .arrow-right { display: none; }
+  .arrow-down { display: inline-flex; }
 
   .workflow-steps {
     grid-template-columns: 1fr;

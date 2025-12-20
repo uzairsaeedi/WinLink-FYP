@@ -1,5 +1,5 @@
 import React from 'react'
-import { FiMonitor, FiServer, FiArrowRight } from 'react-icons/fi'
+import { FiMonitor, FiServer, FiArrowRight, FiArrowDown } from 'react-icons/fi'
 import './Architecture.css'
 
 function Architecture() {
@@ -29,7 +29,8 @@ function Architecture() {
 
           <div className="arch-arrow" role="img" aria-label="Secure TLS Connection">
             <span>Secure TLS Connection</span>
-            <FiArrowRight className="arrow-icon" aria-hidden="true" />
+            <FiArrowRight className="arrow-icon arrow-right" aria-hidden="true" />
+            <FiArrowDown className="arrow-icon arrow-down" aria-hidden="true" />
           </div>
 
           <div className="arch-node worker glass">
