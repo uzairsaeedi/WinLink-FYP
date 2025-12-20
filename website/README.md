@@ -135,7 +135,3 @@ MIT License - see the main project LICENSE file for details.
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
----
-
-Made with ❤️ for the WinLink project

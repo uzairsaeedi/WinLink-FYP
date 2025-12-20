@@ -1,40 +1,40 @@
 .footer {
-  background: rgba(0, 0, 0, 0.3);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 60px 0 30px;
-  margin-top: 80px;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.16));
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  padding: clamp(24px, 6vw, 60px) 0 clamp(12px, 3vw, 30px);
+  margin-top: clamp(24px, 6vw, 80px);
 }
 
 .footer-content {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr;
-  gap: 40px;
-  margin-bottom: 40px;
+  gap: clamp(12px, 3vw, 40px);
+  margin-bottom: clamp(12px, 3vw, 40px);
 }
 
 .footer-section h4 {
-  font-size: 18px;
+  font-size: clamp(16px, 2.2vw, 18px);
   color: var(--text-primary);
-  margin-bottom: 20px;
+  margin-bottom: clamp(8px, 2.5vw, 20px);
   font-weight: 600;
 }
 
 .footer-logo {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: clamp(8px, 2vw, 12px);
+  margin-bottom: clamp(8px, 2vw, 16px);
 }
 
 .logo-icon-footer {
-  width: 36px;
-  height: 36px;
+  width: clamp(28px, 4vw, 36px);
+  height: clamp(28px, 4vw, 36px);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  padding: 5px;
+  background: var(--panel-bg);
+  border-radius: 0.375rem;
+  padding: 0.3125rem;
 }
 
 .footer-logo-image {
@@ -45,18 +45,18 @@
 }
 
 .footer-logo .logo-text {
-  font-size: 20px;
+  font-size: clamp(16px, 2.5vw, 20px);
   font-weight: 700;
-  background: linear-gradient(135deg, #4fc3f7 0%, #9c27b0 100%);
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue-40) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .footer-description {
-  font-size: 14px;
+  font-size: clamp(12px, 1.6vw, 14px);
   line-height: 1.6;
   color: var(--text-secondary);
-  max-width: 300px;
+  max-width: clamp(220px, 35vw, 300px);
 }
 
 .footer-section ul {
@@ -64,7 +64,7 @@
 }
 
 .footer-section ul li {
-  margin-bottom: 12px;
+  margin-bottom: clamp(8px, 2.5vw, 12px);
 }
 
 .footer-section ul li a {
@@ -74,49 +74,49 @@
 }
 
 .footer-section ul li a:hover {
-  color: #4fc3f7;
+  color: var(--accent-blue);
 }
 
 .social-links {
   display: flex;
-  gap: 12px;
+  gap: clamp(8px, 2vw, 12px);
 }
 
 .social-link {
-  width: 40px;
-  height: 40px;
+  width: clamp(32px, 4vw, 40px);
+  height: clamp(32px, 4vw, 40px);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: var(--panel-bg);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 0.5rem;
   color: var(--text-secondary);
-  font-size: 20px;
+  font-size: clamp(16px, 2.5vw, 20px);
   transition: all 0.3s ease;
 }
 
 .social-link:hover {
-  background: rgba(79, 195, 247, 0.2);
-  border-color: #4fc3f7;
-  color: #4fc3f7;
+  background: var(--accent-blue-10);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
   transform: translateY(-2px);
 }
 
 .footer-bottom {
   text-align: center;
-  padding-top: 30px;
+  padding-top: clamp(12px, 3vw, 30px);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .footer-bottom p {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: clamp(12px, 1.6vw, 14px);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: clamp(6px, 1.6vw, 6px);
+  margin-bottom: clamp(6px, 1.6vw, 8px);
 }
 
 .heart-icon {
@@ -130,7 +130,7 @@
 }
 
 .footer-note {
-  font-size: 13px;
+  font-size: clamp(12px, 1.4vw, 13px);
   opacity: 0.7;
 }
 

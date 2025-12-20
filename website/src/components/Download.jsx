@@ -39,7 +39,7 @@ function Download() {
 
             <div className="download-buttons">
               <a 
-                href="https://github.com/ashhadhere/WinLink-FYP/archive/refs/heads/main.zip" 
+                href="https://github.com/uzairsaeedi/WinLink-Production/archive/refs/heads/main.zip" 
                 className="btn btn-primary download-btn"
                 download
               >
@@ -49,7 +49,7 @@ function Download() {
               </a>
 
               <a 
-                href="https://github.com/ashhadhere/WinLink-FYP" 
+                href="https://github.com/uzairsaeedi/WinLink-FYP.git" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="btn btn-secondary"
@@ -62,7 +62,7 @@ function Download() {
             <div className="quick-start">
               <h4>Quick Start</h4>
               <div className="command-block">
-                <code>git clone https://github.com/ashhadhere/WinLink-FYP.git</code>
+                <code>git clone https://github.com/uzairsaeedi/WinLink-FYP.git</code>
                 <code>cd WinLink-FYP</code>
                 <code>.\setup_windows.bat</code>
               </div>
@@ -96,7 +96,7 @@ function Download() {
                 Check out the comprehensive documentation and setup guides in the repository.
               </p>
               <a 
-                href="https://github.com/ashhadhere/WinLink-FYP#readme" 
+                href="https://github.com/uzairsaeedi/WinLink-FYP#readme" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="help-link"

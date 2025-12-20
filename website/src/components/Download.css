@@ -1,10 +1,10 @@
 .download {
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, transparent 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.14) 0%, transparent 100%);
 }
 
 .download-content {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
+  gap: clamp(16px, 4vw, 32px);
+  margin-bottom: clamp(20px, 6vw, 60px);
   gap: 32px;
   margin-bottom: 60px;
 }
@@ -21,18 +21,18 @@
 }
 
 .download-header h3 {
-  font-size: 28px;
+  margin-bottom: clamp(12px, 3vw, 24px);
   color: var(--text-primary);
 }
 
 .version-badge {
   padding: 8px 16px;
-  background: linear-gradient(135deg, #4fc3f7 0%, #9c27b0 100%);
-  border-radius: 20px;
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue-40) 100%);
+  font-size: clamp(12px, 1.6vw, 14px);
   font-size: 14px;
   font-weight: 600;
   color: white;
-}
+  font-size: clamp(14px, 2.2vw, 16px);
 
 .download-description {
   font-size: 16px;
@@ -40,24 +40,24 @@
   color: var(--text-secondary);
   margin-bottom: 32px;
 }
-
-.download-buttons {
+  gap: clamp(8px, 2.5vw, 16px);
+  margin-bottom: clamp(12px, 3.5vw, 40px);
   display: flex;
   gap: 16px;
   margin-bottom: 40px;
   flex-wrap: wrap;
 }
 
-.download-btn {
+  gap: clamp(4px, 1.2vw, 4px);
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-}
+  font-size: clamp(11px, 1.2vw, 12px);
 
 .file-size {
   font-size: 12px;
   opacity: 0.8;
-}
+  font-size: clamp(16px, 2.5vw, 18px);
 
 .quick-start h4 {
   font-size: 18px;
@@ -66,8 +66,8 @@
 }
 
 .command-block {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: clamp(12px, 3vw, 20px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
   padding: 20px;
   display: flex;
@@ -75,15 +75,15 @@
   gap: 8px;
 }
 
-.command-block code {
+  font-size: clamp(12px, 1.6vw, 14px);
   font-family: 'Consolas', 'Monaco', monospace;
-  color: #4fc3f7;
+  color: var(--accent-blue);
   font-size: 14px;
-}
+  padding: clamp(12px, 3vw, 32px);
 
 .requirements-panel {
   padding: 32px;
-}
+  font-size: clamp(16px, 2.5vw, 20px);
 
 .requirements-panel h4 {
   font-size: 20px;
@@ -106,7 +106,7 @@
   padding: 10px 0;
   color: var(--text-secondary);
   font-size: 15px;
-}
+  font-size: clamp(16px, 2.5vw, 20px);
 
 .req-icon {
   font-size: 20px;
@@ -125,13 +125,13 @@
   margin-top: 32px;
   padding-top: 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
+  font-size: clamp(16px, 2.5vw, 18px);
 
 .help-section h4 {
   font-size: 18px;
   margin-bottom: 12px;
 }
-
+  font-size: clamp(12px, 1.6vw, 14px);
 .help-section p {
   color: var(--text-secondary);
   font-size: 14px;
@@ -148,10 +148,10 @@
 }
 
 .help-link:hover {
-  color: #9c27b0;
+  color: var(--accent-blue-40);
 }
 
-.features-highlight {
+  gap: clamp(12px, 3vw, 24px);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 24px;
@@ -159,16 +159,16 @@
 
 .highlight-item {
   padding: 24px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--panel-bg);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  font-size: clamp(14px, 2.2vw, 16px);
 
 .highlight-item h4 {
   font-size: 16px;
   color: var(--text-primary);
   margin-bottom: 8px;
-}
+  font-size: clamp(12px, 1.6vw, 14px);
 
 .highlight-item p {
   font-size: 14px;
@@ -181,7 +181,7 @@
     grid-template-columns: 1fr;
   }
 }
-
+    padding: clamp(12px, 3vw, 32px) clamp(12px, 3vw, 24px);
 @media (max-width: 768px) {
   .download-main {
     padding: 32px 24px;
@@ -200,7 +200,7 @@
   .download-buttons .btn {
     width: 100%;
     justify-content: center;
-  }
+    font-size: clamp(12px, 1.6vw, 12px);
 
   .command-block code {
     font-size: 12px;

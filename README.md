@@ -6,7 +6,7 @@
 
 ## 🌐 Official Website
 
-Visit: [https://uzairsaeedi.github.io/WinLink-FYP/](https://uzairsaeedi.github.io/WinLink-FYP/)
+Visit: [https://www.winlink.app](https://www.winlink.app)
 
 ---
 
@@ -131,12 +131,6 @@ WinLink-FYP/
 - **Certificates:** Run `python windows_setup_certificates.py` if SSL errors
 - **Dependencies:** Run `pip install -r requirements.txt`
 - **Logs:** Check the `logs/` folder for error details
-
----
-
-## 🌍 Website & Documentation
-
-- **Website:** [https://uzairsaeedi.github.io/WinLink-FYP/](https://uzairsaeedi.github.io/WinLink-FYP/)
 
 ---
 

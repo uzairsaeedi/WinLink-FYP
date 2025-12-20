@@ -27,10 +27,9 @@ function Architecture() {
             </ul>
           </div>
 
-          <div className="arch-arrow">
-            <FiArrowRight />
+          <div className="arch-arrow" role="img" aria-label="Secure TLS Connection">
             <span>Secure TLS Connection</span>
-            <FiArrowRight />
+            <FiArrowRight className="arrow-icon" aria-hidden="true" />
           </div>
 
           <div className="arch-node worker glass">

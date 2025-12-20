@@ -36,17 +36,17 @@ function Footer() {
             <h4>Resources</h4>
             <ul>
               <li>
-                <a href="https://github.com/ashhadhere/WinLink-FYP#readme" target="_blank" rel="noopener noreferrer">
+                <a href="https://github.com/uzairsaeedi/WinLink-FYP#readme" target="_blank" rel="noopener noreferrer">
                   Documentation
                 </a>
               </li>
               <li>
-                <a href="https://github.com/ashhadhere/WinLink-FYP" target="_blank" rel="noopener noreferrer">
+                <a href="https://github.com/uzairsaeedi/WinLink-FYP.git" target="_blank" rel="noopener noreferrer">
                   GitHub Repository
                 </a>
               </li>
               <li>
-                <a href="https://github.com/ashhadhere/WinLink-FYP/issues" target="_blank" rel="noopener noreferrer">
+                <a href="https://github.com/uzairsaeedi/WinLink-FYP.git" target="_blank" rel="noopener noreferrer">
                   Report Issues
                 </a>
               </li>
@@ -57,7 +57,7 @@ function Footer() {
             <h4>Connect</h4>
             <div className="social-links">
               <a
-                href="https://github.com/ashhadhere/WinLink-FYP"
+                href="https://github.com/uzairsaeedi/WinLink-FYP.git"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="social-link"
@@ -66,7 +66,7 @@ function Footer() {
                 <FiGithub />
               </a>
               <a
-                href="mailto:contact@winlink.dev"
+                href="mailto:uzairsaeedi627@gmail.com"
                 className="social-link"
                 title="Email"
               >
@@ -77,9 +77,6 @@ function Footer() {
         </div>
 
         <div className="footer-bottom">
-          <p>
-            © {currentYear} WinLink. Made with <FiHeart className="heart-icon" /> for distributed computing enthusiasts.
-          </p>
           <p className="footer-note">
             Open Source • MIT License
           </p>
