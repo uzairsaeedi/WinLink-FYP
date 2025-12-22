@@ -1,16 +1,19 @@
 .download {
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.14) 0%, transparent 100%);
+  padding-top: 28px;
+  padding-bottom: 28px;
 }
 
 .download-content {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
-  gap: 32px;
-  margin-bottom: 60px;
+  gap: 20px;
+  margin-bottom: 20px;
+  align-items: start;
 }
 
 .download-main {
-  padding: 48px;
+  padding: 28px;
 }
 
 .download-header {
@@ -38,13 +41,13 @@
   font-size: 16px;
   line-height: 1.6;
   color: var(--text-secondary);
-  margin-bottom: 32px;
+  margin-bottom: 20px;
 }
 
 .download-buttons {
   display: flex;
-  gap: 16px;
-  margin-bottom: 40px;
+  gap: 12px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
@@ -69,7 +72,7 @@
   background: var(--panel-bg-2);
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
-  padding: 20px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -82,7 +85,7 @@
 }
 
 .requirements-panel {
-  padding: 32px;
+  padding: 20px;
 }
 
 .requirements-panel h4 {
@@ -122,9 +125,9 @@
 }
 
 .help-section {
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .help-section h4 {
@@ -153,12 +156,12 @@
 
 .features-highlight {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
 }
 
 .highlight-item {
-  padding: 24px;
+  padding: 16px;
   background: var(--panel-bg);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.03);

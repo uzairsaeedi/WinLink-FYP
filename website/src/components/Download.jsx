@@ -58,15 +58,6 @@ function Download() {
                 View on GitHub
               </a>
             </div>
-
-            <div className="quick-start">
-              <h4>Quick Start</h4>
-              <div className="command-block">
-                <code>git clone https://github.com/uzairsaeedi/WinLink-FYP.git</code>
-                <code>cd WinLink-FYP</code>
-                <code>.\setup_windows.bat</code>
-              </div>
-            </div>
           </div>
 
           <div className="requirements-panel glass">

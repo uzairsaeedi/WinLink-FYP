@@ -1,10 +1,27 @@
 import React, { useState, useEffect } from 'react'
-import { FiMenu, FiX } from 'react-icons/fi'
+import { FiMenu, FiX, FiSun, FiMoon } from 'react-icons/fi'
 import './Navbar.css'
 
 function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('theme') || 'dark'
+    } catch (e) {
+      return 'dark'
+    }
+  })
+
+  const toggleTheme = () => {
+    try {
+      document.body.classList.add('theme-fade')
+    } catch (e) {}
+    setTheme(prev => (prev === 'light' ? 'dark' : 'light'))
+    setTimeout(() => {
+      try { document.body.classList.remove('theme-fade') } catch (e) {}
+    }, 380)
+  }
 
   useEffect(() => {
     const handleScroll = () => {
@@ -13,6 +30,11 @@ function Navbar() {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  useEffect(() => {
+    document.body.classList.toggle('light-theme', theme === 'light')
+    try { localStorage.setItem('theme', theme) } catch (e) {}
+  }, [theme])
 
   const scrollToSection = (id) => {
     const element = document.getElementById(id)
@@ -45,6 +67,13 @@ function Navbar() {
         </ul>
 
         <div className="navbar-actions">
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-label="Toggle light and dark theme"
+          >
+            {theme === 'light' ? <FiMoon size={18} /> : <FiSun size={18} />}
+          </button>
           <button className="btn btn-primary" onClick={() => scrollToSection('download')}>
             Get Started
           </button>

@@ -52,6 +52,43 @@ html, body, #root {
   --card-hover: rgba(255, 255, 255, 0.02);
 }
 
+/* Light theme overrides: attach `light-theme` class to `body` to enable */
+body.light-theme {
+  --bg: #f7f9fb;
+  --gradient-start: #f8fafc;
+  --gradient-end: #e9eef6;
+
+  --panel-bg: rgba(12, 19, 28, 0.02);
+  --panel-bg-2: rgba(12, 19, 28, 0.03);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(22, 28, 34, 0.06);
+
+  --text-primary: #0b1a2b;
+  --text-secondary: #5b6b77;
+
+  --accent-blue: #1e90ff;
+  --accent-blue-10: rgba(30,144,255,0.10);
+  --accent-blue-20: rgba(30,144,255,0.20);
+  --accent-blue-40: rgba(30,144,255,0.40);
+
+  --accent-muted: #f0f4f8;
+  --accent-muted-05: rgba(240, 244, 248, 0.7);
+
+  --accent-green: #2e8b57;
+  --accent-green-10: rgba(46,139,87,0.10);
+
+  --shadow-color: rgba(10, 18, 28, 0.06);
+  --card-hover: rgba(15, 23, 32, 0.02);
+}
+
+/* Scrollbar adjustments for light theme */
+body.light-theme ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0.08));
+}
+body.light-theme {
+  scrollbar-color: rgba(0,0,0,0.12) rgba(0,0,0,0.03);
+}
+
 body {
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
@@ -62,6 +99,18 @@ body {
   color: var(--text-primary);
   overflow-x: hidden;
   position: relative;
+}
+
+/* Smooth theme cross-fade when toggling
+   Uses a short transition on color/background properties. Honor reduced motion. */
+body.theme-fade {
+  transition: background 360ms ease, color 360ms ease, box-shadow 360ms ease, border-color 360ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.theme-fade {
+    transition: none !important;
+  }
 }
 
 body::before {
