@@ -17,9 +17,11 @@
 
 /* When mobile menu is opened, ensure navbar background matches scrolled state */
 .navbar.menu-open {
-  background: linear-gradient(180deg, rgba(10,12,18,0.6), rgba(10,12,18,0.8));
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(180deg, rgba(10,12,18,0.95), rgba(10,12,18,0.95)) !important;
+  background-color: rgba(10,12,18,0.95) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  backdrop-filter: blur(10px) !important;
+  box-shadow: 0 6px 40px rgba(0, 0, 0, 0.35) !important;
   padding: 12px 0;
 }
 
@@ -146,9 +148,10 @@
   }
 
   .navbar.menu-open .navbar-menu {
-    top: 100%;
-    background: linear-gradient(180deg, rgba(10,12,18,0.95), rgba(10,12,18,0.98));
-    backdrop-filter: blur(10px);
+    top: 64px;
+    background: rgba(10,12,18,0.98) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    backdrop-filter: blur(10px) !important;
   }
 
   .navbar-menu li a {
