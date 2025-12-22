@@ -120,7 +120,7 @@
 @media (max-width: 768px) {
   .navbar-menu {
     position: fixed;
-    top: 70px;
+    top: 100%;
     left: 0;
     right: 0;
     flex-direction: column;
@@ -132,11 +132,23 @@
     opacity: 0;
     transition: all 0.3s ease;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    z-index: 1001;
   }
 
   .navbar-menu.active {
     transform: translateX(0);
     opacity: 1;
+  }
+
+  /* Ensure the menu background and placement stay consistent when navbar is open */
+  .navbar.menu-open {
+    padding: 12px 0;
+  }
+
+  .navbar.menu-open .navbar-menu {
+    top: 100%;
+    background: linear-gradient(180deg, rgba(10,12,18,0.95), rgba(10,12,18,0.98));
+    backdrop-filter: blur(10px);
   }
 
   .navbar-menu li a {
