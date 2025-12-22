@@ -33,6 +33,7 @@
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: 50px;
+  margin-top: 20px;
   margin-bottom: 32px;
   animation: fadeInUp 1s ease-out 0.2s both;
 }
