@@ -152,6 +152,10 @@
   justify-content: center;
 }
 
+/* Desktop defaults: show the horizontal (right) arrow only */
+.arrow-right { display: inline-flex; }
+.arrow-down { display: none; }
+
 /* Remove absolute positioning; connector lines added to nodes (master/worker) */
 @media (max-width: 768px) {
   .architecture-diagram {
