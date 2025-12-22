@@ -222,5 +222,12 @@ body.light-theme .mobile-menu-toggle {
     display: flex;
   }
 
-  .theme-toggle { display: none; }
+  .theme-toggle {
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    align-items: center;
+    justify-content: center;
+  }
 }
