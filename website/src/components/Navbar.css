@@ -15,6 +15,14 @@
   padding: 12px 0;
 }
 
+/* When mobile menu is opened, ensure navbar background matches scrolled state */
+.navbar.menu-open {
+  background: linear-gradient(180deg, rgba(10,12,18,0.6), rgba(10,12,18,0.8));
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  padding: 12px 0;
+}
+
 .navbar-container {
   display: flex;
   justify-content: space-between;

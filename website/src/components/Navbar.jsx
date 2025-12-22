@@ -23,7 +23,7 @@ function Navbar() {
   }
 
   return (
-    <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
+    <nav className={`navbar ${isScrolled ? 'scrolled' : ''} ${isMobileMenuOpen ? 'menu-open' : ''}`}>
       <div className="container navbar-container">
         <div className="navbar-logo" onClick={() => scrollToSection('hero')}>
           <div className="logo-icon">
