@@ -39,7 +39,7 @@ function Download() {
 
             <div className="download-buttons">
               <a 
-                href="/releases/WinLink_Installer.exe" 
+                href="../../release/WinLink_Installer.exe" 
                 className="btn btn-primary download-btn"
                 download="WinLink_Installer.exe"
               >
