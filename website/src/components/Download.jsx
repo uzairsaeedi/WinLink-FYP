@@ -39,9 +39,11 @@ function Download() {
 
             <div className="download-buttons">
               <a 
-                href="../../release/WinLink_Installer.exe" 
+                href="https://github.com/uzairsaeedi/WinLink-FYP/releases/latest/download/WinLink_Installer.exe" 
                 className="btn btn-primary download-btn"
                 download="WinLink_Installer.exe"
+                rel="noopener noreferrer"
+                target="_blank"
               >
                 <FiDownload />
                 Download WinLink
