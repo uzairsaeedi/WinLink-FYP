@@ -1,6 +1,6 @@
 
 
-import sys, os, socket, threading, psutil, time, json
+import sys, os, socket, threading, psutil, time, json, subprocess, shutil
 from collections import deque
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -1378,15 +1378,42 @@ class WorkerUI(QWidget):
             self.log("   ⚠️  VLC not available: trying default system player...")
             opened = False
             try:
-                # On Windows, os.startfile will use the default handler for the URL
-                import os
+                # First try to launch an external VLC if installed (plays network URLs reliably)
+                vlc_candidates = []
+                # Check common Windows install locations
                 if sys.platform == 'win32':
+                    vlc_candidates.extend([
+                        r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+                        r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+                    ])
+
+                # Check PATH / which
+                which_vlc = shutil.which('vlc')
+                if which_vlc:
+                    vlc_candidates.insert(0, which_vlc)
+
+                vlc_launched = False
+                for vlc_path in vlc_candidates:
                     try:
-                        os.startfile(video_url)
-                        opened = True
-                        self.log(f"   ▶️ Opened with default system handler: {video_url}")
+                        if vlc_path and os.path.exists(vlc_path):
+                            # Launch VLC with the URL and return immediately
+                            subprocess.Popen([vlc_path, '--play-and-exit', video_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+                            opened = True
+                            vlc_launched = True
+                            self.log(f"   ▶️ Launched external VLC: {vlc_path} {video_url}")
+                            break
                     except Exception:
-                        opened = False
+                        continue
+
+                if not vlc_launched:
+                    # On Windows, os.startfile will use the default handler for the URL
+                    if sys.platform == 'win32':
+                        try:
+                            os.startfile(video_url)
+                            opened = True
+                            self.log(f"   ▶️ Opened with default system handler: {video_url}")
+                        except Exception:
+                            opened = False
                 if not opened:
                     # Fallback to opening in browser
                     import webbrowser

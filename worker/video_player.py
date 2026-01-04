@@ -12,6 +12,9 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QPalette, QColor, QFont
 import sys
 import os
+import subprocess
+import shutil
+import webbrowser
 
 # Try to import VLC, fallback to basic web player
 VLC_AVAILABLE = False
@@ -166,6 +169,24 @@ class VideoPlayerWindow(QWidget):
             """)
             open_browser_btn.clicked.connect(self.open_in_browser)
             fallback_layout.addWidget(open_browser_btn, alignment=Qt.AlignCenter)
+
+            open_vlc_btn = QPushButton("▶ Open in VLC")
+            open_vlc_btn.setStyleSheet("""
+                QPushButton {
+                    background: #00b894;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 10px 18px;
+                    font-size: 11pt;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #009e78;
+                }
+            """)
+            open_vlc_btn.clicked.connect(self.open_in_vlc)
+            fallback_layout.addWidget(open_vlc_btn, alignment=Qt.AlignCenter)
             
             fallback_layout.addStretch()
             layout.addWidget(fallback_frame)
@@ -280,6 +301,25 @@ class VideoPlayerWindow(QWidget):
         close_btn.clicked.connect(self.close)
         control_layout.addWidget(close_btn)
         
+        # Add Open in VLC / Browser buttons (visible for embedded player)
+        self.open_vlc_btn = QPushButton("▶ Open in VLC")
+        self.open_vlc_btn.setFixedHeight(36)
+        self.open_vlc_btn.setStyleSheet("""
+            QPushButton { background: #00b894; color: white; border: none; border-radius: 6px; padding: 6px 12px; }
+            QPushButton:hover { background: #009e78; }
+        """)
+        self.open_vlc_btn.clicked.connect(self.open_in_vlc)
+        control_layout.addWidget(self.open_vlc_btn)
+
+        self.open_browser_btn = QPushButton("🌐 Open in Browser")
+        self.open_browser_btn.setFixedHeight(36)
+        self.open_browser_btn.setStyleSheet("""
+            QPushButton { background: #667eea; color: white; border: none; border-radius: 6px; padding: 6px 12px; }
+            QPushButton:hover { background: #5568d3; }
+        """)
+        self.open_browser_btn.clicked.connect(self.open_in_browser)
+        control_layout.addWidget(self.open_browser_btn)
+        
         layout.addWidget(control_bar)
         
     def load_video(self):
@@ -322,6 +362,35 @@ class VideoPlayerWindow(QWidget):
             
             print(f"[VIDEO] ✅ Playing video: {self.video_url}")
             
+            # Verify playback started after a short delay; if not, offer external VLC
+            def verify_playback():
+                try:
+                    playing = False
+                    # Use python-vlc API if available
+                    try:
+                        playing = bool(self.media_player.is_playing())
+                    except Exception:
+                        try:
+                            state = self.media_player.get_state()
+                            playing = (hasattr(vlc, 'State') and state == vlc.State.Playing)
+                        except Exception:
+                            playing = False
+
+                    if not playing:
+                        # Prompt user to open externally
+                        from core.ui import ask_confirmation, show_warning
+                        print("[VIDEO] ⚠️ Embedded VLC playback did not start or is black-screening.")
+                        ask = ask_confirmation(self, "Playback Issue",
+                                               "Embedded playback did not start. Open in external VLC instead?",
+                                               yes_text="Open VLC",
+                                               no_text="Cancel")
+                        if ask:
+                            self.open_in_vlc()
+                except Exception:
+                    pass
+
+            QTimer.singleShot(2000, verify_playback)
+
         except Exception as e:
             print(f"[VIDEO] ❌ Error loading video: {e}")
             show_error(self, "Error", f"Failed to load video:\n{str(e)}", details=str(e))
@@ -381,6 +450,56 @@ class VideoPlayerWindow(QWidget):
         import webbrowser
         webbrowser.open(self.video_url)
         print(f"[VIDEO] 🌐 Opened in browser: {self.video_url}")
+
+    def open_in_vlc(self):
+        """Try to open the video URL in an external VLC executable."""
+        # Look for vlc on PATH first
+        try:
+            vlc_path = shutil.which('vlc')
+            vlc_candidates = []
+            if vlc_path:
+                vlc_candidates.append(vlc_path)
+
+            # Common Windows locations
+            if sys.platform == 'win32':
+                vlc_candidates.extend([
+                    r'C:\Program Files\VideoLAN\VLC\vlc.exe',
+                    r'C:\Program Files (x86)\VideoLAN\VLC\vlc.exe',
+                ])
+
+            launched = False
+            for p in vlc_candidates:
+                try:
+                    if p and os.path.exists(p):
+                        subprocess.Popen([p, '--play-and-exit', self.video_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+                        launched = True
+                        print(f"[VIDEO] ▶ Launched external VLC: {p} {self.video_url}")
+                        break
+                except Exception as e:
+                    print(f"[VIDEO] Failed to launch {p}: {e}")
+                    continue
+
+            if not launched:
+                # As a last resort try os.startfile on Windows or open in browser
+                try:
+                    if sys.platform == 'win32':
+                        os.startfile(self.video_url)
+                        launched = True
+                        print(f"[VIDEO] ▶ Opened with default handler: {self.video_url}")
+                    else:
+                        webbrowser.open(self.video_url)
+                        launched = True
+                except Exception as e:
+                    from core.ui import show_error
+                    show_error(self, "VLC Not Found", "External VLC not found and could not open URL.", details=str(e))
+
+            if not launched:
+                from core.ui import show_error
+                show_error(self, "VLC Not Found", "Could not locate or launch an external VLC player on this machine. Please install VLC or open the video URL in a browser.")
+
+        except Exception as e:
+            from core.ui import show_error
+            show_error(self, "Error Launching VLC", "An unexpected error occurred while trying to open VLC.", details=str(e))
     
     def closeEvent(self, event):
         """Handle window close event"""

@@ -8,15 +8,17 @@ import shutil
 import subprocess
 import textwrap
 
+import datetime
+
 def clean_build():
-    """Clean previous build artifacts"""
+    """Clean previous builds and spec file"""
     print("Cleaning previous builds...")
     dirs_to_clean = ['build', 'dist', '__pycache__']
     for dir_name in dirs_to_clean:
         if os.path.exists(dir_name):
             shutil.rmtree(dir_name)
             print(f"  Removed {dir_name}/")
-    
+
     for file in ['WinLink.spec']:
         if os.path.exists(file):
             os.remove(file)
@@ -290,6 +292,250 @@ Version: 2.0
     
     return True
 
+
+def find_inno_compiler():
+    """Try to locate Inno Setup Compiler (ISCC.exe) on the system."""
+    # Check PATH first
+    iscc = shutil.which('iscc')
+    if iscc:
+        return iscc
+
+    # Common install locations
+    candidates = [
+        r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+        r"C:\Program Files\Inno Setup 6\ISCC.exe",
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def create_inno_installer(prod_dir='WinLink_Production', output_dir='dist'):
+    """Create a Windows installer using Inno Setup (ISCC).
+
+    Returns path to generated installer exe on success, or None on failure.
+    """
+    print('\nAttempting to create Inno Setup installer...')
+
+    if not os.path.exists(prod_dir):
+        print(f"✗ Production directory not found: {prod_dir}")
+        return None
+
+
+    iscc = find_inno_compiler()
+    if not iscc:
+        print("✗ Inno Setup Compiler (ISCC.exe) not found. Install Inno Setup to create an installer:")
+        print("  https://jrsoftware.org/isinfo.php")
+        return None
+
+    # Prepare working paths
+    timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M')
+    iss_name = f'WinLink_{timestamp}.iss'
+    iss_path = os.path.abspath(iss_name)
+    # Installer filename (no timestamp) as requested
+    output_base = 'WinLink_Installer'
+
+    # Build the ISS script
+    prod_abs = os.path.abspath(prod_dir)
+    icon_path = os.path.join(prod_abs, 'WinLink', 'assets', 'WinLink_logo.ico')
+    if not os.path.exists(icon_path):
+        # Try project icon as fallback
+        icon_path = os.path.abspath('assets/WinLink_logo.ico') if os.path.exists('assets/WinLink_logo.ico') else ''
+
+    # Put Tasks after [Setup] and explicitly install the WinLink subfolder into {app}\WinLink
+    iss_lines = [
+        '[Setup]',
+        f'AppName=WinLink',
+        f'AppVersion=2.0',
+        'DefaultDirName={pf}\WinLink',
+        'DefaultGroupName=WinLink',
+        f'OutputBaseFilename={output_base}',
+        'Compression=lzma',
+        'SolidCompression=yes',
+        'WizardStyle=modern',
+        'DisableDirPage=no',
+        'DirExistsWarning=yes',
+        'PrivilegesRequired=admin',
+        '',
+        '[Tasks]',
+        'Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional tasks:"',
+        '',
+        '[Files]',
+        # Copy only the WinLink folder contents into {app}\WinLink to avoid nested production folders
+        f'Source: "{os.path.join(prod_abs, "WinLink", "*")}"; DestDir: "{{app}}\\WinLink"; Flags: recursesubdirs createallsubdirs',
+        '',
+        '[Icons]',
+    ]
+
+    # Add Start Menu shortcut and optional desktop icon (controlled by task)
+    if icon_path:
+        iss_lines.append(f'Name: "{{group}}\\WinLink"; Filename: "{{app}}\\WinLink\\WinLink.exe"; IconFilename: "{icon_path}"; Tasks: desktopicon')
+        iss_lines.append(f'Name: "{{userdesktop}}\\WinLink"; Filename: "{{app}}\\WinLink\\WinLink.exe"; IconFilename: "{icon_path}"; Tasks: desktopicon')
+    else:
+        iss_lines.append('Name: "{group}\\WinLink"; Filename: "{app}\\WinLink\\WinLink.exe"; Tasks: desktopicon')
+        iss_lines.append('Name: "{userdesktop}\\WinLink"; Filename: "{app}\\WinLink\\WinLink.exe"; Tasks: desktopicon')
+
+    iss_lines.extend([
+        '',
+        '[Run]',
+        # Run the EXE directly (more reliable than batch file)
+        'Filename: "{app}\\WinLink\\WinLink.exe"; Description: "Launch WinLink"; Flags: nowait postinstall skipifsilent',
+    ])
+
+    # Write ISS file
+    with open(iss_path, 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(iss_lines))
+
+    print(f"Using ISCC at: {iscc}")
+    print(f"Created ISS script: {iss_path}")
+
+    # Run ISCC to build installer
+    try:
+        subprocess.check_call([iscc, iss_path])
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Inno Setup compilation failed: {e}")
+        return None
+    except Exception as e:
+        print(f"✗ Failed to run ISCC: {e}")
+        return None
+
+    # Inno outputs installer exe in the same folder with name OutputBaseFilename.exe
+    installer_name = f'{output_base}.exe'
+
+    # Common ISCC output locations: current working dir and 'Output' subfolder.
+    possible_paths = [
+        os.path.join(os.getcwd(), installer_name),
+        os.path.join(os.getcwd(), 'Output', installer_name),
+    ]
+
+    installer_path = None
+    for p in possible_paths:
+        if os.path.exists(p):
+            installer_path = p
+            break
+
+    # If not found yet, search recursively under cwd (covers uncommon configs)
+    if not installer_path:
+        for root, dirs, files in os.walk(os.getcwd()):
+            if installer_name in files:
+                installer_path = os.path.join(root, installer_name)
+                break
+
+    if installer_path and os.path.exists(installer_path):
+        os.makedirs(output_dir, exist_ok=True)
+        final_path = os.path.join(output_dir, installer_name)
+        # If an installer already exists at destination, replace it
+        try:
+            if os.path.exists(final_path):
+                os.remove(final_path)
+            shutil.move(installer_path, final_path)
+            print(f"✓ Installer created: {final_path}")
+            return final_path
+        except Exception:
+            print(f"✓ Installer created: {installer_path}")
+            return installer_path
+
+    print(f"✗ Installer not found after build: expected {installer_name} under cwd or Output/ folder")
+    return None
+
+
+def find_nsis_compiler():
+    """Try to locate NSIS compiler (makensis.exe) on the system."""
+    nsis = shutil.which('makensis')
+    if nsis:
+        return nsis
+
+    candidates = [
+        r"C:\Program Files (x86)\NSIS\makensis.exe",
+        r"C:\Program Files\NSIS\makensis.exe",
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def create_nsis_installer(prod_dir='WinLink_Production', output_dir='dist'):
+    """Create a Windows installer using NSIS (makensis).
+
+    Returns path to generated installer exe on success, or None on failure.
+    """
+    print('\nAttempting to create NSIS installer...')
+
+    if not os.path.exists(prod_dir):
+        print(f"✗ Production directory not found: {prod_dir}")
+        return None
+
+    makensis = find_nsis_compiler()
+    if not makensis:
+        print("✗ NSIS compiler (makensis.exe) not found. Install NSIS to create an installer:")
+        print("  https://nsis.sourceforge.io/")
+        return None
+
+    timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M')
+    nsi_name = f'WinLink_{timestamp}.nsi'
+    # Fixed NSIS installer filename (no timestamp)
+    out_name = 'WinLink_NSIS_Installer.exe'
+    nsi_path = os.path.abspath(nsi_name)
+
+    prod_abs = os.path.abspath(prod_dir)
+    winlink_dir = os.path.join(prod_abs, 'WinLink')
+    if not os.path.exists(winlink_dir):
+        print(f"✗ Expected WinLink directory not found inside {prod_dir}")
+        return None
+
+    # Build a simple NSIS script with a components page so user can choose shortcuts
+    nsi_lines = [
+        f'OutFile "{out_name}"',
+        'InstallDir "$PROGRAMFILES\\WinLink"',
+        'Page components',
+        'Page directory',
+        'Page instfiles',
+        'Section "Main Files" SEC01',
+        f'  SetOutPath "$INSTDIR"',
+        f'  File /r "{winlink_dir}\\*.*"',
+        'SectionEnd',
+        'Section "Create Shortcuts" SEC02',
+        '  ; This section will be optional (user can uncheck it)\n',
+        f'  CreateShortCut "$SMPROGRAMS\\WinLink.lnk" "$INSTDIR\\WinLink\\WinLink.exe"',
+        f'  CreateShortCut "$DESKTOP\\WinLink.lnk" "$INSTDIR\\WinLink\\WinLink.exe"',
+        'SectionEnd',
+    ]
+
+    with open(nsi_path, 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(nsi_lines))
+
+    print(f"Using makensis at: {makensis}")
+    print(f"Created NSIS script: {nsi_path}")
+
+    try:
+        subprocess.check_call([makensis, nsi_path])
+    except subprocess.CalledProcessError as e:
+        print(f"✗ NSIS compilation failed: {e}")
+        return None
+    except Exception as e:
+        print(f"✗ Failed to run makensis: {e}")
+        return None
+
+    # Move resulting installer to output_dir
+    installer_path = os.path.join(os.getcwd(), out_name)
+    if os.path.exists(installer_path):
+        os.makedirs(output_dir, exist_ok=True)
+        final_path = os.path.join(output_dir, out_name)
+        try:
+            if os.path.exists(final_path):
+                os.remove(final_path)
+            shutil.move(installer_path, final_path)
+            print(f"✓ NSIS installer created: {final_path}")
+            return final_path
+        except Exception:
+            print(f"✓ NSIS installer created: {installer_path}")
+            return installer_path
+    else:
+        print(f"✗ NSIS installer not found after build: expected {installer_path}")
+        return None
+
 def main():
     print("=" * 60)
     print("WinLink Production Build Script")
@@ -317,6 +563,19 @@ def main():
     # Step 5: Create distribution package
     if not create_distribution_package():
         return False
+    print()
+    # Step 6: Attempt to create native installer (Inno Setup -> NSIS fallback)
+    installer_path = create_inno_installer(prod_dir='WinLink_Production', output_dir='dist')
+    if not installer_path:
+        print("Inno Setup not available or failed — trying NSIS (makensis)...")
+        installer_path = create_nsis_installer(prod_dir='WinLink_Production', output_dir='dist')
+
+    if installer_path:
+        print(f"\n✓ Native installer created: {installer_path}")
+        print("You can distribute this single EXE to users; running it will show an installation wizard.")
+    else:
+        print("\n⚠️ Native installer was not created. The production folder is available in WinLink_Production/.")
+        print("To create an installer, install Inno Setup (https://jrsoftware.org/isinfo.php) or NSIS (https://nsis.sourceforge.io/) and re-run this script.")
     
     print("\n" + "=" * 60)
     print("BUILD SUCCESSFUL!")

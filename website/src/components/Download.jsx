@@ -39,13 +39,12 @@ function Download() {
 
             <div className="download-buttons">
               <a 
-                href="https://github.com/uzairsaeedi/WinLink-Production/archive/refs/heads/main.zip" 
+                href="/releases/WinLink_Installer.exe" 
                 className="btn btn-primary download-btn"
-                download
+                download="WinLink_Installer.exe"
               >
                 <FiDownload />
                 Download WinLink
-                <span className="file-size">~5 MB</span>
               </a>
 
               <a 
