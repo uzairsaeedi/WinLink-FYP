@@ -27,13 +27,8 @@ from core.ui import show_info, show_warning, show_error, ask_confirmation
 from assets.styles import STYLE_SHEET
 from worker.task_thread import TaskExecutionThread
 
-# Import VideoPlayerWindow only when needed (VLC is optional)
-try:
-    from worker.video_player import VideoPlayerWindow
-    VIDEO_PLAYER_AVAILABLE = True
-except Exception as e:
-    VIDEO_PLAYER_AVAILABLE = False
-    print(f"[WORKER] Video player not available: {e}")
+# Video player disabled: we will open video URLs directly in the default browser
+VIDEO_PLAYER_AVAILABLE = False
 
 class LogSignals(QObject):
     """Signals for thread-safe logging"""
@@ -1372,184 +1367,48 @@ class WorkerUI(QWidget):
             self._send_error_to_master(task_id, error_msg)
             return
         
-        # Check if video player is available
-        if not VIDEO_PLAYER_AVAILABLE:
-            # Attempt to open with default system handler (Windows Movies & TV or default app)
-            self.log("   ⚠️  VLC not available: trying default system player...")
-            opened = False
-            try:
-                # First try to launch an external VLC if installed (plays network URLs reliably)
-                vlc_candidates = []
-                # Check common Windows install locations
-                if sys.platform == 'win32':
-                    vlc_candidates.extend([
-                        r"C:\Program Files\VideoLAN\VLC\vlc.exe",
-                        r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
-                    ])
+        # Open the video URL directly in the default browser (no VLC or embedded player)
+        try:
+            import webbrowser
+            webbrowser.open(video_url)
+            self.log(f"   🌐 Opened video URL in default browser: {video_url}")
 
-                # Check PATH / which
-                which_vlc = shutil.which('vlc')
-                if which_vlc:
-                    vlc_candidates.insert(0, which_vlc)
-
-                vlc_launched = False
-                for vlc_path in vlc_candidates:
-                    try:
-                        if vlc_path and os.path.exists(vlc_path):
-                            # Launch VLC with the URL and return immediately
-                            subprocess.Popen([vlc_path, '--play-and-exit', video_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
-                            opened = True
-                            vlc_launched = True
-                            self.log(f"   ▶️ Launched external VLC: {vlc_path} {video_url}")
-                            break
-                    except Exception:
-                        continue
-
-                if not vlc_launched:
-                    # On Windows, os.startfile will use the default handler for the URL
-                    if sys.platform == 'win32':
-                        try:
-                            os.startfile(video_url)
-                            opened = True
-                            self.log(f"   ▶️ Opened with default system handler: {video_url}")
-                        except Exception:
-                            opened = False
-                if not opened:
-                    # Fallback to opening in browser
-                    import webbrowser
-                    webbrowser.open(video_url)
-                    opened = True
-                    self.log(f"   🌐 Opened video URL in browser as fallback")
-
-                # Send success response
-                with self.tasks_lock:
-                    self.current_tasks[task_id] = {
-                        "status": "done",
-                        "progress": 100,
-                        "started_at": time.time(),
-                        "completed_at": time.time(),
-                        "memory_used_mb": 0,
-                        "output": f"Video opened by default handler: {video_title}\nURL: {video_url}",
-                        "name": task_name
-                    }
-
-                result_payload = {
-                    "success": True,
-                    "result": {
-                        "status": "opened_default",
-                        "video_url": video_url,
-                        "title": video_title,
-                        "note": "Opened with system default handler"
-                    },
-                    "error": None,
-                    "stdout": f"Opened with default handler: {video_url}",
-                    "stderr": None,
-                    "execution_time": 0.1,
-                    "memory_used": 0
+            with self.tasks_lock:
+                self.current_tasks[task_id] = {
+                    "status": "done",
+                    "progress": 100,
+                    "started_at": time.time(),
+                    "completed_at": time.time(),
+                    "memory_used_mb": 0,
+                    "output": f"Opened in browser: {video_title}\nURL: {video_url}",
+                    "name": task_name
                 }
-                try:
-                    self.network.send_task_result(task_id, result_payload)
-                except Exception:
-                    pass
 
-            except Exception as e:
-                self.log(f"   ❌ Failed to open video: {e}")
-                self._send_error_to_master(task_id, str(e))
-
-            QTimer.singleShot(0, self._refresh_tasks_display)
-            return
-        
-        # Track task
-        with self.tasks_lock:
-            self.current_tasks[task_id] = {
-                "status": "playing",
-                "progress": 100,
-                "started_at": time.time(),
-                "memory_used_mb": 0,
-                "output": f"Playing video: {video_title}\nURL: {video_url}",
-                "name": task_name
+            result_payload = {
+                "success": True,
+                "result": {
+                    "status": "opened_in_browser",
+                    "video_url": video_url,
+                    "title": video_title
+                },
+                "error": None,
+                "stdout": f"Opened in browser: {video_url}",
+                "stderr": None,
+                "execution_time": 0.1,
+                "memory_used": 0
             }
-        
+            try:
+                self.network.send_task_result(task_id, result_payload)
+            except Exception:
+                pass
+
+        except Exception as e:
+            self.log(f"   ❌ Failed to open video URL in browser: {e}")
+            self._send_error_to_master(task_id, str(e))
+
         QTimer.singleShot(0, self._refresh_tasks_display)
         QTimer.singleShot(0, self._refresh_output_display)
-        
-        def open_player():
-            """Open video player in main thread"""
-            try:
-                self.log(f"   🎬 Opening video player window...")
-                
-                # Create and show video player window
-                player = VideoPlayerWindow(video_url, video_title, parent=self)
-                
-                # Track the player window
-                if not hasattr(self, 'video_players'):
-                    self.video_players = []
-                self.video_players.append(player)
-                
-                # Connect close signal to cleanup
-                def on_player_closed():
-                    if player in self.video_players:
-                        self.video_players.remove(player)
-                    
-                    end_time = time.time()
-                    start_time = self.current_tasks.get(task_id, {}).get("started_at", end_time)
-                    duration = end_time - start_time
-                    
-                    self.log(f"   🔒 Video player closed after {duration:.1f}s")
-                    
-                    # Send completion result to master
-                    result_payload = {
-                        "success": True,
-                        "result": {
-                            "status": "completed",
-                            "video_url": video_url,
-                            "title": video_title,
-                            "duration": duration
-                        },
-                        "error": None,
-                        "stdout": f"Video played for {duration:.1f} seconds",
-                        "stderr": None,
-                        "execution_time": duration,
-                        "memory_used": 0
-                    }
-                    self.network.send_task_result(task_id, result_payload)
-                    
-                    # Update task status
-                    with self.tasks_lock:
-                        if task_id in self.current_tasks:
-                            self.current_tasks[task_id]["status"] = "done"
-                            self.current_tasks[task_id]["completed_at"] = end_time
-                    
-                    QTimer.singleShot(0, self._refresh_tasks_display)
-                    QTimer.singleShot(5000, lambda: self._schedule_task_cleanup(task_id))
-                
-                player.closed.connect(on_player_closed)
-                player.show()
-                
-                self.log(f"   ✅ Video player opened successfully")
-                
-                # Send initial success message to master
-                msg = NetworkMessage(MessageType.PROGRESS_UPDATE, {
-                    'task_id': task_id,
-                    'progress': 100
-                })
-                self.network.send_message_to_master(msg)
-                
-            except Exception as e:
-                error_msg = f"Failed to open video player: {str(e)}"
-                self.log(f"   ❌ Error: {error_msg}")
-                self._send_error_to_master(task_id, error_msg)
-                
-                # Update task status to failed
-                with self.tasks_lock:
-                    if task_id in self.current_tasks:
-                        self.current_tasks[task_id]["status"] = "failed"
-                        self.current_tasks[task_id]["output"] = error_msg
-                
-                QTimer.singleShot(0, self._refresh_tasks_display)
-        
-        # Schedule player opening on main thread
-        QTimer.singleShot(100, open_player)
+        return
     
     def _handle_progress_update(self, task_id: str, progress: int):
         """Handle progress update from task thread (thread-safe)"""

@@ -41,36 +41,10 @@ def create_spec_file():
     # and includes hiddenimports for matplotlib and numpy. UPX is disabled by default
     # because UPX may not be installed on the build machine.
     # Optionally bundle VLC native files if available on the build machine
-    BUNDLE_VLC = True
+    BUNDLE_VLC = False
 
-    def find_vlc():
-        # Common Windows VLC locations
-        candidates = [
-            r"C:\Program Files\VideoLAN\VLC",
-            r"C:\Program Files (x86)\VideoLAN\VLC",
-        ]
-        # Also check environment variable (if user set VLC_PATH)
-        env_vlc = os.environ.get('VLC_PATH')
-        if env_vlc:
-            candidates.insert(0, env_vlc)
-
-        for p in candidates:
-            if os.path.isdir(p):
-                return p
-        return None
-
-    vlc_path = find_vlc() if BUNDLE_VLC else None
-    if vlc_path:
-        print(f"Found VLC installation at: {vlc_path} — bundling into package")
-    else:
-        if BUNDLE_VLC:
-            print("VLC not found on build machine — skipping VLC bundling")
-
-    # Prepare optional VLC Tree line for the spec file
-    if vlc_path:
-        vlc_tree = "datas = datas + Tree(%r, prefix='vlc')\n" % vlc_path
-    else:
-        vlc_tree = "\n"
+    
+    vlc_tree = "\n"
 
     # Build spec content as a list of lines to avoid f-string/dedent pitfalls
     spec_lines = [
@@ -123,7 +97,6 @@ def create_spec_file():
         "    'matplotlib.backends.backend_qt5agg',",
         "    'matplotlib.backends.backend_agg',",
         "    'numpy',",
-        "    'vlc',",
         "]",
         "",
         "a = Analysis(",

@@ -168,3 +168,5 @@ profile_results/
 # User specific files (if any)
 user_config.json
 personal_settings.json
+WinLink_*.iss
+release/
