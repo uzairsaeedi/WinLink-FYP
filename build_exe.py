@@ -311,10 +311,11 @@ def create_inno_installer(prod_dir='WinLink_Production', output_dir='dist'):
 
     # Build the ISS script
     prod_abs = os.path.abspath(prod_dir)
-    icon_path = os.path.join(prod_abs, 'WinLink', 'assets', 'WinLink_logo.ico')
-    if not os.path.exists(icon_path):
-        # Try project icon as fallback
-        icon_path = os.path.abspath('assets/WinLink_logo.ico') if os.path.exists('assets/WinLink_logo.ico') else ''
+    # Prefer the icon packaged inside the production WinLink folder
+    prod_icon = os.path.join(prod_abs, 'WinLink', 'assets', 'WinLink_logo.ico')
+    # Fallback to project-level assets folder if production copy missing
+    project_icon = os.path.abspath('assets/WinLink_logo.ico') if os.path.exists('assets/WinLink_logo.ico') else ''
+    icon_path = prod_icon if os.path.exists(prod_icon) else (project_icon if project_icon else '')
 
     # Put Tasks after [Setup] and explicitly install the WinLink subfolder into {app}\WinLink
     iss_lines = [
@@ -337,14 +338,22 @@ def create_inno_installer(prod_dir='WinLink_Production', output_dir='dist'):
         '[Files]',
         # Copy only the WinLink folder contents into {app}\WinLink to avoid nested production folders
         f'Source: "{os.path.join(prod_abs, "WinLink", "*")}"; DestDir: "{{app}}\\WinLink"; Flags: recursesubdirs createallsubdirs',
-        '',
-        '[Icons]',
     ]
 
-    # Add Start Menu shortcut and optional desktop icon (controlled by task)
+    # If we have an icon file available inside the production package (or project),
+    # add it to the [Files] section so the installer will install it into {app}.
     if icon_path:
-        iss_lines.append(f'Name: "{{group}}\\WinLink"; Filename: "{{app}}\\WinLink\\WinLink.exe"; IconFilename: "{icon_path}"; Tasks: desktopicon')
-        iss_lines.append(f'Name: "{{userdesktop}}\\WinLink"; Filename: "{{app}}\\WinLink\\WinLink.exe"; IconFilename: "{icon_path}"; Tasks: desktopicon')
+        # Install the icon into the application folder (so shortcuts can reference {app}\WinLink_logo.ico)
+        iss_lines.append(f'Source: "{icon_path}"; DestDir: "{{app}}"; Flags: ignoreversion')
+
+    iss_lines.append('')
+    iss_lines.append('[Icons]')
+
+    # Add Start Menu shortcut and optional desktop icon (controlled by task).
+    # Use the installed icon path ({app}\WinLink_logo.ico) instead of an absolute build-machine path.
+    if icon_path:
+        iss_lines.append('Name: "{group}\\WinLink"; Filename: "{app}\\WinLink\\WinLink.exe"; IconFilename: "{app}\\WinLink_logo.ico"; Tasks: desktopicon')
+        iss_lines.append('Name: "{userdesktop}\\WinLink"; Filename: "{app}\\WinLink\\WinLink.exe"; IconFilename: "{app}\\WinLink_logo.ico"; Tasks: desktopicon')
     else:
         iss_lines.append('Name: "{group}\\WinLink"; Filename: "{app}\\WinLink\\WinLink.exe"; Tasks: desktopicon')
         iss_lines.append('Name: "{userdesktop}\\WinLink"; Filename: "{app}\\WinLink\\WinLink.exe"; Tasks: desktopicon')
