@@ -77,7 +77,8 @@ class TaskExecutionThread(QThread):
         result = self.task_executor.execute_task(
             self.code,
             self.payload,
-            progress_callback=progress_with_log
+            progress_callback=progress_with_log,
+            task_id=self.task_id
         )
         
         if not self._is_running:

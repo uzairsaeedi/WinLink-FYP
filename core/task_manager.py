@@ -187,10 +187,10 @@ class TaskManager:
         with self.lock:
             for task in self.tasks.values():
                 if task.worker_id == worker_id and task.status in (TaskStatus.RUNNING, TaskStatus.PENDING):
+                    # Preserve progress so a new worker can resume where the previous left off
                     task.worker_id = None
                     task.status = TaskStatus.PENDING
                     task.started_at = None
-                    task.progress = 0
                     # Ensure task is in the queue for scheduling
                     if task.id not in self.task_queue:
                         self.task_queue.append(task.id)
@@ -1036,5 +1036,60 @@ result = {
         }
     },
     
-    
+    "checkpoint_demo": {
+        "type": TaskType.COMPUTATION,
+        "name": "Checkpoint Demo Task",
+        "description": "Demonstrates checkpoint_save/checkpoint_load and resume_progress",
+        "code": """
+import time
+
+# Attempt to load an existing checkpoint (worker exposes checkpoint_load)
+ck = None
+try:
+    ck = checkpoint_load()
+except Exception:
+    ck = None
+
+start_index = 0
+total = int(data.get('count_to', 50))
+sleep = float(data.get('sleep', 0.05))
+
+# Prefer checkpoint state counter if present
+if ck and isinstance(ck, dict):
+    state = ck.get('state') or {}
+    try:
+        start_index = int(state.get('counter', start_index))
+    except Exception:
+        start_index = start_index
+elif resume_progress is not None:
+    try:
+        # Convert resume_progress (percent) to an index
+        start_index = int((int(resume_progress) / 100.0) * total)
+    except Exception:
+        start_index = start_index
+
+print(f"Checkpoint demo starting from {start_index}/{total} (resume_progress={resume_progress})")
+
+for i in range(start_index, total):
+    # Simulated work
+    x = i * i
+
+    # Compute progress and report it
+    progress = int(((i + 1) / total) * 100)
+    report_progress(progress)
+
+    # Auto-save checkpoint periodically and on milestones
+    if (i + 1) % max(1, total // 10) == 0 or progress in (25, 50, 75, 100):
+        try:
+            checkpoint_save({'progress': progress, 'counter': i + 1, 'last_result': x})
+            print(f"Checkpoint saved at {i+1}/{total} ({progress}%)")
+        except Exception:
+            pass
+
+    time.sleep(sleep)
+
+result = {'completed': True, 'count': total}
+""",
+        "sample_data": {"count_to": 50, "sleep": 0.02}
+    },
 }

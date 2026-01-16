@@ -65,6 +65,9 @@ class MasterNetwork:
         self.verbose = False  # Set True to enable verbose network prints
         self.discovery_thread: Optional[threading.Thread] = None
         self._discovery_lock = threading.Lock()
+        # Callback invoked when a worker is removed/disconnected:
+        # signature: Callable[[worker_id: str], None]
+        self.on_worker_disconnected: Optional[Callable] = None
         
     def broadcast_task(self, task_id: str, code: str, data: Dict[str, Any]):
         """Send the task to all connected workers"""
@@ -358,6 +361,16 @@ class MasterNetwork:
             
             if worker_id in self.worker_info:
                 self.worker_info[worker_id]['status'] = 'disconnected'
+        # Notify higher-level owner (master UI / scheduler) so tasks can be re-assigned
+        try:
+            if callable(self.on_worker_disconnected):
+                # Call outside of lock to avoid deadlocks in callbacks
+                try:
+                    self.on_worker_disconnected(worker_id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     
     def get_connected_workers(self) -> Dict[str, Dict]:
         """Get information about connected workers"""

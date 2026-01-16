@@ -52,6 +52,11 @@ class MasterUI(QtWidgets.QWidget):
         self.network.register_handler(MessageType.READY, self.handle_worker_ready)
         self.network.register_handler(MessageType.ERROR, self.handle_worker_error)
         self.network.start()
+        # Callback for unexpected worker disconnections so we can requeue/reassign tasks
+        try:
+            self.network.on_worker_disconnected = self.handle_worker_disconnected
+        except Exception:
+            pass
 
         self.setup_ui()
         self.start_monitoring_thread()
@@ -2607,6 +2612,44 @@ class MasterUI(QtWidgets.QWidget):
             0,
             lambda: show_error(self, "Worker Error", f"Worker {worker_id} reported an error:\n{error}")
         )
+
+    def handle_worker_disconnected(self, worker_id: str):
+        """Handle unexpected worker disconnect: requeue its tasks and try to re-dispatch them.
+
+        If no other workers are connected, show an error informing the user.
+        """
+        print(f"[MASTER] ⚠️ Detected worker disconnect: {worker_id}")
+
+        # Requeue tasks that were assigned to this worker (preserves progress)
+        try:
+            self.task_manager.requeue_tasks_for_worker(worker_id)
+        except Exception as e:
+            print(f"[MASTER] Error requeuing tasks for {worker_id}: {e}")
+
+        connected = self.network.get_connected_workers()
+        if not connected:
+            # No workers to take over - notify user
+            QtCore.QTimer.singleShot(0, lambda: show_error(self, "Worker Disconnected",
+                                                          f"Worker {worker_id} disconnected during processing and no other workers are connected."))
+            self.refresh_task_table_async()
+            return
+
+        # Attempt to dispatch any pending tasks (which were requeued) to other workers
+        pending = [t for t in self.task_manager.get_tasks_by_status(TaskStatus.PENDING) if t.worker_id is None]
+        for task in pending:
+            try:
+                # Copy data and include resume hint
+                new_data = task.data.copy() if isinstance(task.data, dict) else {}
+                new_data['resume_progress'] = task.progress
+                dispatched = self.dispatch_task_to_worker(task.id, task.code, new_data)
+                if dispatched:
+                    print(f"[MASTER] 🔁 Reassigned task {task.id[:8]}... to {dispatched}")
+                else:
+                    print(f"[MASTER] ❌ Failed to reassign task {task.id[:8]}...")
+            except Exception as e:
+                print(f"[MASTER] Exception while reassigning task {task.id}: {e}")
+
+        self.refresh_task_table_async()
 
     def clear_completed_tasks(self):
         self.task_manager.clear_tasks(status=TaskStatus.COMPLETED)

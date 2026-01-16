@@ -6,6 +6,7 @@ import time
 import traceback
 import threading
 from typing import Callable, Optional
+import json
 
 import psutil
 from contextlib import redirect_stdout, redirect_stderr
@@ -26,7 +27,8 @@ class TaskExecutor:
         self,
         task_code: str,
         task_data: dict,
-        progress_callback: Optional[Callable[[int], None]] = None
+        progress_callback: Optional[Callable[[int], None]] = None,
+        task_id: Optional[str] = None
     ) -> dict:
         """
         Execute a task safely with resource monitoring
@@ -41,6 +43,7 @@ class TaskExecutor:
         start_time = time.time()
         start_memory = self._get_memory_usage()
         
+        # Placeholder; will be replaced with an enhanced version after checkpoint helpers are set up
         def report_progress(value: int):
             if not progress_callback:
                 return
@@ -79,6 +82,123 @@ class TaskExecutor:
                 'IndexError': IndexError, 'KeyError': KeyError
             }
         }
+
+        # Provide simple checkpointing helpers when task_id is available
+        try:
+            import os
+            checkpoint_dir = None
+            if task_id:
+                # Place checkpoints in worker/checkpoints/<task_id>.json relative to repo root
+                root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+                checkpoint_dir = os.path.join(root, 'worker', 'checkpoints')
+                try:
+                    os.makedirs(checkpoint_dir, exist_ok=True)
+                except Exception:
+                    checkpoint_dir = None
+
+            def _checkpoint_save(state: dict):
+                if not checkpoint_dir or not task_id:
+                    return False
+                try:
+                    path = os.path.join(checkpoint_dir, f"{task_id}.json")
+                    with open(path, 'w', encoding='utf-8') as fh:
+                        json.dump({'progress': state.get('progress'), 'state': state}, fh)
+                    return True
+                except Exception:
+                    return False
+
+            def _checkpoint_load():
+                if not checkpoint_dir or not task_id:
+                    return None
+                try:
+                    path = os.path.join(checkpoint_dir, f"{task_id}.json")
+                    if not os.path.exists(path):
+                        return None
+                    with open(path, 'r', encoding='utf-8') as fh:
+                        return json.load(fh)
+                except Exception:
+                    return None
+
+            # Expose convenience helpers to task code
+            task_namespace['checkpoint_save'] = _checkpoint_save
+            task_namespace['checkpoint_load'] = _checkpoint_load
+            # Provide a convenience variable 'resume_progress' inside task namespace
+            resume_val = None
+            try:
+                resume_val = int(task_data.get('resume_progress')) if isinstance(task_data.get('resume_progress'), (int, str)) else None
+            except Exception:
+                resume_val = None
+            # If there is a stored checkpoint prefer that progress value
+            stored = _checkpoint_load() if task_id else None
+            if stored and isinstance(stored, dict):
+                try:
+                    stored_prog = stored.get('progress')
+                    if stored_prog is not None:
+                        resume_val = int(stored_prog)
+                except Exception:
+                    pass
+
+            task_namespace['resume_progress'] = resume_val
+        except Exception:
+            pass
+
+        # Enhanced report_progress: forwards to provided callback and auto-checkpoints
+        try:
+            last_checkpoint = {'time': 0, 'progress': -1}
+            checkpoint_interval = 10.0  # seconds
+            checkpoint_delta = 5        # percent change
+
+            def _auto_checkpoint(clamped_progress: int):
+                try:
+                    saver = task_namespace.get('checkpoint_save')
+                    if callable(saver):
+                        state = {'progress': clamped_progress}
+                        return saver(state)
+                except Exception:
+                    pass
+                return False
+
+            def report_progress_enhanced(value: int):
+                try:
+                    clamped = max(0, min(100, int(value)))
+
+                    # Call external callback first
+                    if progress_callback:
+                        try:
+                            progress_callback(clamped)
+                        except Exception:
+                            pass
+
+                    # Auto-checkpoint logic: on delta, on interval, or on milestone
+                    now = time.time()
+                    last_p = last_checkpoint['progress']
+                    last_t = last_checkpoint['time']
+
+                    should_save = False
+                    if last_p < 0:
+                        should_save = True
+                    elif (clamped - last_p) >= checkpoint_delta:
+                        should_save = True
+                    elif (now - last_t) >= checkpoint_interval:
+                        should_save = True
+                    elif clamped in (25, 50, 75, 100):
+                        should_save = True
+
+                    if should_save:
+                        try:
+                            saved = _auto_checkpoint(clamped)
+                            if saved:
+                                last_checkpoint['progress'] = clamped
+                                last_checkpoint['time'] = now
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            report_progress = report_progress_enhanced
+            task_namespace['report_progress'] = report_progress
+        except Exception:
+            pass
         
         # Allow safe imports (extend with commonly used system modules for tasks)
         safe_modules = [
